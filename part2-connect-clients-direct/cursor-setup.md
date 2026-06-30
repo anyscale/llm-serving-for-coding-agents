@@ -27,5 +27,5 @@ Open Cursor chat, pick `qwen3.6-27b`, send "say hi in 3 words" → a reply confi
   and parts of **Agent/Composer** are tuned for Cursor's own models and may be limited.
 - **Tool calling** is server-side (`tool_call_parser=qwen3_coder`); if tool calls come back as raw text,
   that parser would need adjusting on the service.
-- **Cold start / 300s cap** — warm the service first (`./smoke-test-direct.sh`); a single request past
+- **Cold start / 300s cap** — warm the service first (send one quick request); a single request past
   300s hits the Anyscale ALB timeout (`504`).

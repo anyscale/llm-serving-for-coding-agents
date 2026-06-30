@@ -5,7 +5,7 @@ Works against either service in this tutorial (naive or optimized) — just set 
 Local (inside a workspace, after `serve run`):
     python client.py                      # defaults to http://localhost:8000
 
-Against a deployed Anyscale Service (uses the same ANYSCALE_* vars as Part 2a's .env):
+Against a deployed Anyscale Service (uses the same ANYSCALE_* vars as Part 2's .env):
     export ANYSCALE_BASE_URL="https://YOUR-HOST.s.anyscaleuserdata.com/v1"   # include /v1
     export ANYSCALE_API_KEY="your-bearer-token"
     python client.py
@@ -14,7 +14,7 @@ import os
 
 from openai import OpenAI
 
-# Accept the tutorial-wide ANYSCALE_* names (Part 2a .env) or the plain ones; localhost by default.
+# Accept the tutorial-wide ANYSCALE_* names (Part 2 .env) or the plain ones; localhost by default.
 API_KEY = os.environ.get("ANYSCALE_API_KEY") or os.environ.get("API_KEY", "FAKE_KEY")
 BASE_URL = os.environ.get("ANYSCALE_BASE_URL") or os.environ.get("BASE_URL", "http://localhost:8000")
 MODEL = os.environ.get("ANYSCALE_MODEL") or os.environ.get("MODEL", "qwen3.6-27b")

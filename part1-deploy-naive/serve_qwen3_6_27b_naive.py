@@ -17,7 +17,7 @@
 # The ONE thing it DOES turn on: DIRECT STREAMING — an API-surface feature (not a perf tweak) that
 # puts vLLM's native app behind HAProxy so this single endpoint serves
 #   /v1/chat/completions (Cursor) + /v1/messages (Claude Code) + /v1/responses (Codex)
-# all at once, which is what lets Part 2a connect all three agents with NO proxy / no LiteLLM.
+# all at once, which is what lets Part 2 connect all three agents with NO proxy / no LiteLLM.
 # It's enabled by two SERVICE-LEVEL env_vars set in service_naive.yaml (top-level `env_vars:`):
 #   RAY_SERVE_ENABLE_HA_PROXY=1  +  RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
 # They MUST be service/cluster-level, NOT a per-deployment runtime_env / in-module os.environ: the Ray

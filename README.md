@@ -17,7 +17,7 @@ streaming** on, so a single endpoint speaks all three coding-agent APIs natively
 | | What you get | Folder |
 |---|---|---|
 | **1 — Deploy** | A working endpoint on Anyscale (4× L4), with **direct streaming** enabled so it serves all three agent APIs from one service. | [`part1-deploy-naive/`](./part1-deploy-naive/) |
-| **2a — Connect (direct)** | Point Claude Code, Codex, and Cursor **straight at the native endpoints** — no LiteLLM, no `pip install`. | [`part2a-connect-clients-direct/`](./part2a-connect-clients-direct/) |
+| **2 — Connect (direct)** | Point Claude Code, Codex, and Cursor **straight at the native endpoints** — no LiteLLM, no `pip install`. | [`part2-connect-clients-direct/`](./part2-connect-clients-direct/) |
 
 ## Quick start
 
@@ -26,10 +26,9 @@ streaming** on, so a single endpoint speaks all three coding-agent APIs natively
 cd part1-deploy-naive
 anyscale service deploy -f service_naive.yaml        # wait for RUNNING; grab the URL + token
 
-# 2a) Connect your agents directly (no proxy)
-cd ../part2a-connect-clients-direct
+# 2) Connect your agents directly (no proxy)
+cd ../part2-connect-clients-direct
 cp .env.example .env && $EDITOR .env                 # paste service URL (+/v1), token, model id
-./smoke-test-direct.sh                               # all 3 native endpoints should return 200
 ./run-claude-direct.sh                               # Claude Code on qwen3.6-27b
 #   or ./run-codex-direct.sh   |   see cursor-setup.md (Cursor)
 ```

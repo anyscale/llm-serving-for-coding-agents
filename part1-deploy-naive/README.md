@@ -25,7 +25,7 @@ in the Anyscale console → **Services → qwen3-6-27b-fp8-naive → Query**, co
 - the **base URL** (append `/v1` — e.g. `https://….s.anyscaleuserdata.com/v1`), and
 - a **bearer token**.
 
-You'll paste both into Part 2a's `.env`.
+You'll paste both into Part 2's `.env`.
 
 > **Prefer to iterate interactively first?** Deploy into a Workspace instead of a Service:
 > create a workspace on the same image/compute, `anyscale workspace_v2 push` this folder, then
@@ -54,7 +54,7 @@ no proxy needed:
 | `POST /v1/messages` | Claude Code (Anthropic) |
 | `POST /v1/responses` | Codex (OpenAI Responses) |
 
-Connect your agents in **[Part 2a](../part2a-connect-clients-direct/)** — point Claude Code, Codex, and
+Connect your agents in **[Part 2](../part2-connect-clients-direct/)** — point Claude Code, Codex, and
 Cursor **directly** at the paths above, **no proxy, no `pip install`**. (A LiteLLM-gateway alternative
 also exists — handy for a service *without* direct streaming — but this repo uses the direct path.)
 
@@ -69,9 +69,9 @@ also exists — handy for a service *without* direct streaming — but this repo
 >
 > **Workspace `serve run`:** start the workspace with those two vars in its env (set them in the
 > workspace's env config, or `export` them and restart Serve), then
-> `serve run serve_qwen3_6_27b_naive:app`. Verify with
-> `part2a-connect-clients-direct/smoke-test-direct.sh`: it pings all three paths. If `/v1/messages` or
-> `/v1/responses` returns 404, direct streaming isn't active — check the `env_vars` in `service_naive.yaml`.
+> `serve run serve_qwen3_6_27b_naive:app`. To verify, curl the service — `/v1/messages` and
+> `/v1/responses` should respond (not `404`). A `404` means direct streaming isn't active; check the
+> `env_vars` in `service_naive.yaml`.
 
 ## Why this image / GPU
 
@@ -82,4 +82,4 @@ also exists — handy for a service *without* direct streaming — but this repo
   weights fit on a single bigger GPU; an optimized variant moves to **1× RTX PRO 6000 96GB** (TP=1) to
   serve the model's full 256K context in FP8.
 
-→ Next: **[Part 2a — connect Claude Code / Codex / Cursor directly](../part2a-connect-clients-direct/README.md)** (no proxy).
+→ Next: **[Part 2 — connect Claude Code / Codex / Cursor directly](../part2-connect-clients-direct/README.md)** (no proxy).

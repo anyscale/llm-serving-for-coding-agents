@@ -1,4 +1,4 @@
-# Part 2a — Connect Claude Code, Codex, and Cursor (direct, no proxy)
+# Part 2 — Connect Claude Code, Codex, and Cursor (direct, no proxy)
 
 Point all three coding agents at your `qwen3.6-27b` service — with **no proxy and no `pip install`**.
 Each agent talks **straight to the service's native endpoint**, which works because **Part 1 enables
@@ -25,15 +25,14 @@ simplest. A LiteLLM-gateway is the fallback for a service that only exposes Chat
 ## 1. One-time setup
 
 ```bash
-cd part2a-connect-clients-direct
+cd part2-connect-clients-direct
 cp .env.example .env && $EDITOR .env     # paste your service URL (+/v1), token, model id
-
-./smoke-test-direct.sh                    # pings all THREE native endpoints (cold start ~2-4 min)
 ```
 
-`smoke-test-direct.sh` is the gate: it must return **HTTP 200** on `/v1/chat/completions`,
-`/v1/messages`, **and** `/v1/responses`. A `404` on the last two means direct streaming isn't active on
-your service — check the `env_vars` in `../part1-deploy-naive/service_naive.yaml` (see Part 1's README).
+**Check direct streaming is on** before launching agents: `/v1/chat/completions`, `/v1/messages`, **and**
+`/v1/responses` should each respond (not `404`) — a quick `curl` to each confirms it. A `404` on the last
+two means direct streaming isn't active on your service — check the `env_vars` in
+`../part1-deploy-naive/service_naive.yaml` (see Part 1's README).
 
 ## 2. Launch an agent
 
@@ -66,7 +65,7 @@ proxy would have to normalize **don't apply here**:
 - **Tool calling is more reliable with reasoning on** — the direct path has no proxy to inject
   `enable_thinking` per request, so it follows the model's server-side default; force it in Part 1's
   serve config (`chat_template_kwargs`) if you need it always on.
-- **Cold start & the 300s ALB cap** — always warm with `smoke-test-direct.sh` first; a single request
+- **Cold start & the 300s ALB cap** — warm the service with a quick request first; a single request
   past 300s hits the Anyscale load-balancer timeout (`504`).
 
 ## Files
@@ -76,7 +75,6 @@ proxy would have to normalize **don't apply here**:
 | `run-claude-direct.sh` | Launches Claude Code against native `/v1/messages` (no proxy). |
 | `run-codex-direct.sh` | Launches Codex against native `/v1/responses` (no proxy); all settings from `.env`. |
 | `cursor-setup.md` | Cursor instructions (points directly at `…/v1`). |
-| `smoke-test-direct.sh` | Pings all three native endpoints — your "is direct streaming on?" check. |
 
 ## Troubleshooting
 | Symptom | Fix |
@@ -85,6 +83,6 @@ proxy would have to normalize **don't apply here**:
 | `401` | Wrong/expired `ANYSCALE_API_KEY` — refresh from Anyscale → Query. |
 | `404 / model not found` | `ANYSCALE_MODEL` ≠ served id — check `curl $BASE/models`. |
 | Claude Code warns "both token and key set" | The launcher unsets `ANTHROPIC_API_KEY`; clear any inherited one in your shell. |
-| Smoke test times out | Service cold-starting — re-run, wait a few min. |
+| First request times out | Service cold-starting — wait a few min and retry. |
 
 → Back: [**Part 1 — deploy (direct streaming on)**](../part1-deploy-naive/README.md).
