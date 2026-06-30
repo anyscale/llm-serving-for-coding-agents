@@ -1,0 +1,14 @@
+# Secrets — never commit. Copy .env.example -> .env and fill it in.
+.env
+**/.env
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/
