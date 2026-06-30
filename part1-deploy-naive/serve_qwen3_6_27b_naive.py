@@ -43,7 +43,8 @@ llm_config = LLMConfig(
         tensor_parallel_size=4,        # 4x L4 on one g6.12xlarge node
         max_model_len=131072,          # 128K
         gpu_memory_utilization=0.85,   # 24 GB GPU rule of thumb
-        kv_cache_dtype="fp8",
+        # kv_cache_dtype left at the default (bf16) — the full 128K context fits on 4x L4 without
+        # quantizing the KV cache (652,346-token cache, 4.98x concurrency at 128K). See README.
         max_num_seqs=16,
         max_num_batched_tokens=8192,
         enable_prefix_caching=True,

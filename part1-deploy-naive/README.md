@@ -82,4 +82,17 @@ also exists — handy for a service *without* direct streaming — but this repo
   weights fit on a single bigger GPU; an optimized variant moves to **1× RTX PRO 6000 96GB** (TP=1) to
   serve the model's full 256K context in FP8.
 
+## KV cache dtype
+
+`serve_qwen3_6_27b_naive.py` leaves `kv_cache_dtype` at the vLLM default (bf16) — the full 128K
+context fits on 4× L4 without quantizing the KV cache. Measured on this exact config (TP=4,
+`gpu_memory_utilization=0.85`, `max_model_len=131072`, vLLM 0.22.0):
+
+| Metric | Value |
+|---|---|
+| Available KV cache memory | **10.37 GiB / GPU** (~41.5 GiB total) |
+| GPU KV cache size | **652,346 tokens** |
+| Max concurrency @ 128K tokens/request | **4.98×** |
+| Engine init | ✅ started cleanly; endpoint serves at HTTP 200 |
+
 → Next: **[Part 2 — connect Claude Code / Codex / Cursor directly](../part2-connect-clients-direct/README.md)** (no proxy).
