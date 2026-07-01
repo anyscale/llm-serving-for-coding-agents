@@ -1,0 +1,14 @@
+# Containerfile — production image for the optimized Qwen3.6-27B-FP8 service.
+# Adds the RunAI Model Streamer (#1) to the ray-llm base (it is NOT in the base image).
+# The torch.compile cache (#2) needs no extra package — CloudDownloader ships with ray-llm,
+# and the shared-VLLM_CACHE_ROOT pattern needs nothing at all.
+#
+# PIN the base for production: the torch.compile cache is keyed to the exact vLLM
+# version/GPU/flags, so a drifting base silently invalidates it. The GA 2.56.0 tag
+# (vLLM 0.22.0) is now registered and validated for this model; for a fully immutable
+# build, replace the tag below with its digest:
+#   FROM anyscale/ray-llm@sha256:<digest>
+FROM anyscale/ray-llm:2.56.0-py312-cu130
+
+# [#1] RunAI Model Streamer for S3 -> GPU weight streaming (validated 23.9s @ 1.2 GiB/s).
+RUN pip install --no-cache-dir runai-model-streamer runai-model-streamer-s3
