@@ -19,10 +19,10 @@ Each knob is measured **OFF vs ON on the same card**, so each row isolates that 
 | 4 | `ENABLE_CUDA_GRAPHS` | eager **15.9 tok/s** | graphs **45.6 tok/s** | **2.87×** decode | **ON** — biggest free win |
 | 5 | `ENABLE_SPEC_DECODE` | base **46 tok/s** | MTP **86 tok/s** | **1.89×** decode † | **OFF** (opt-in) |
 | 6 | `ENABLE_PREFIX_ROUTING` | round-robin **7.79 s** TTFT ✅ | prefix **301 s** TTFT ✗ | **39× worse** ‡ | **OFF** |
-| — | Direct streaming (always on) | — | — | perf A/B is a **[TODO](#todo--measure-on-rtx-pro-6000)** ‡ | **ON** (API surface) |
+| — | Direct streaming (always on) | — | — | native `/v1/messages` + `/v1/responses` | **ON** (required for the agent APIs) |
 
 † MTP's 1.89× decode requires the HF loader, so enabling knob 5 turns knob 1 **off** ([#42060](https://github.com/vllm-project/vllm/issues/42060)) — you trade the fast cold-start for the decode speedup. That's why it's opt-in.
-‡ Two knobs are **workload-dependent, not free wins**: **prefix routing is *worse*** on shared-prefix agent traffic (ON hotspots — so the optimized choice is to keep it OFF / round-robin, §6), and **direct streaming** is on for the native `/v1/messages` + `/v1/responses` **API surface**, not as a throughput lever (its perf A/B is a Pro 6000 TODO).
+‡ **Prefix routing is workload-dependent, not a free win** — it's *worse* on shared-prefix agent traffic (ON hotspots), so the optimized choice is OFF / round-robin (§6). **Direct streaming** is required for the native agent API surface (see below).
 
 For knobs **5** and **6**, the baseline setting (OFF / round-robin) is *also* the optimized default. Combos that can't coexist: [`NOTES-incompatibilities.md`](NOTES-incompatibilities.md).
 
@@ -89,12 +89,8 @@ On = no `enforce_eager`. Decode tok/s on the real agent prompts (FP8, `max_model
 
 ## (5) `ENABLE_SPEC_DECODE` — MTP speculative decoding (default **False**)
 
-Decode tok/s on the real agent prompts (MTP + fp8 KV + CUDA graphs):
-
-| config | decode tok/s | note |
-|---|---|---|
-| **MTP (`qwen3_next_mtp`)** | **86.4** | **1.89× over base, COHERENT** ✅ (no #40880 garbage on Blackwell) |
-| ngram | 47.8 | runs, but only **+5%** on agent traffic |
+On the real agent prompts (fp8 KV + CUDA graphs), **MTP (`qwen3_next_mtp`) decodes at 86.4 tok/s vs 45.6
+base — a 1.89× speedup, and coherent** on Blackwell (the #40880 degenerate-output bug does not occur here).
 
 **Why it's default-off:** MTP needs the HF/default loader, so it forfeits knob (1)'s fast S3 cold-start
 ([#42060](https://github.com/vllm-project/vllm/issues/42060)). Flip it on only when the 1.89× decode
@@ -154,28 +150,23 @@ fix [#64328](https://github.com/ray-project/ray/pull/64328), lands in ray-llm 2.
 
 ## Direct streaming (always on — not a toggle)
 
-HAProxy streams tokens straight from each replica, bypassing the `OpenAiIngress` per-token relay. The
-relay tax is paid **per output token**, so it should only matter with long outputs at high concurrency —
-and should be **neutral on agent traffic** (prefill-bound, short outputs). It's on here **for its real
-purpose — exposing native `/v1/messages` (Claude Code) and `/v1/responses` (Codex)** so those agents
-connect without a proxy, not as a throughput lever. The **direct-vs-relay throughput A/B is a Pro 6000
-TODO** (see below).
+Direct streaming puts vLLM's native ASGI app behind HAProxy so the service exposes **`/v1/messages`
+(Claude Code)** and **`/v1/responses` (Codex)** alongside `/v1/chat/completions` — one endpoint speaks all
+three agent APIs natively, no proxy. **It's required for this demo** (Parts 1 & 2 connect the agents to
+those native endpoints), so it's always on — enabled by the two service-level `env_vars` in
+`service_optimized.yaml` (`RAY_SERVE_ENABLE_HA_PROXY` + `RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING`) that the
+Serve controller reads at startup. It's part of the API surface — keep it on.
 
 ---
 
 ## TODO — measure on RTX PRO 6000
 
-Removed the legacy L40S runs; these are the experiments to (re-)run on the Pro 6000 to close the gaps:
+Removed the legacy L40S runs; this is the gap left to close on the Pro 6000:
 
 1. **Spec-decode concurrency curve + capacity cliff** — sweep concurrency (e.g. 1 / 4 / 8 / 16 / 32) on
    one card, base vs MTP, and find where throughput peaks / KV-preemption thrashes. Use it to set
    `autoscaling_config.target_ongoing_requests` (currently a **conservative, untested `8`** in the serve
    file — pending this measurement). Harness: `benchmarks/ds_bench_agent.py` (real replay) + a concurrency sweep.
-2. **Direct streaming vs relay** — A/B the same service with `RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING` on/off
-   at long-output / high-concurrency, and on the agent replay, to quantify the win (expected: sizable on
-   long-output high-conc, ~neutral on agent traffic) on the Pro 6000.
-3. *(optional)* **ngram vs MTP** re-confirm on Pro 6000 (expected: ngram ≪ MTP on agent traffic; ngram
-   avoids the RunAI-loader conflict but barely helps).
 
 *Raw per-run JSON + the load-test harnesses (`serve_bench_router_rtx.py`, `ds_bench_agent*.py`,
 `gen_fair_trace.py`) live in the Anyscale build workspace, not this repo — ask if you want them exported.*

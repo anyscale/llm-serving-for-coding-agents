@@ -14,8 +14,8 @@ Full per-knob numbers: [`BENCHMARKS.md`](BENCHMARKS.md).
 | **torch.compile cache** (S3) | ✅ ON | ~74.5 s → ~8.8 s compile (full cold-start skip). |
 | **FP8 KV cache** | ✅ ON | fits the **full 256K** context (6.53× concurrency) on the 96 GB card. |
 | **Autoscale** (`max_replicas>1`) | ✅ ON | multi-user throughput. |
-| **Direct streaming** (`/v1/messages`, `/v1/responses`) | ✅ ON | one endpoint serves Claude Code + Codex natively (needs the router fix, ❷). Kept for the API surface; throughput A/B is a Pro 6000 TODO (BENCHMARKS). |
-| **Speculative decoding (MTP)** | ❌ OFF (opt-in) | Real **~1.89×** decode, coherent on Blackwell, but needs the HF loader → **forfeits RunAI fast-load** (❶). When on, use `num_speculative_tokens=3` (sweet spot; 4 regresses). ngram only +5%. |
+| **Direct streaming** (`/v1/messages`, `/v1/responses`) | ✅ ON (required) | one endpoint serves Claude Code + Codex natively — the demo needs it. Under a content-based router it needs the fix in ❷. |
+| **Speculative decoding (MTP)** | ❌ OFF (opt-in) | Real **~1.89×** decode, coherent on Blackwell, but needs the HF loader → **forfeits RunAI fast-load** (❶). When on, use `num_speculative_tokens=3` (sweet spot; 4 regresses). |
 | **Prefix-aware routing** | ❌ OFF | Hotspots hard on shared-prefix agent traffic — up to **263× worse TTFT**, still ~39× even with many users + a clean shared prefix. Only for *many distinct* large prefixes; validate on your own traffic (BENCHMARKS §6). |
 
 **Bottom line:** ship CUDA graphs + RunAI Streamer + compile cache + FP8 KV + autoscale + direct streaming.
