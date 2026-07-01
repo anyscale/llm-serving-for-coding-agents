@@ -1,20 +1,17 @@
 # Measured benchmarks — one section per CONTROL PANEL knob
 
 This maps 1:1 to the **OPTIMIZATION CONTROL PANEL** in `serve_qwen3_6_27b_optimized.py`. Each `ENABLE_*`
-toggle below has its measured effect and the data behind its default. Target HW: **1× RTX PRO 6000**
-(`g7e.4xlarge`, 96 GB, SM120), TP=1, vLLM 0.22.0 (`ray-llm:2.56.0`). The two **serving-layer** knobs
-(prefix routing, direct streaming) are GPU-independent — those were measured on L40S/multi-node and the
-conclusions transfer (absolute throughput just scales with the card).
+toggle has its measured effect and the data behind its default. **All numbers here are on the target HW:
+1× RTX PRO 6000** (`g7e.4xlarge`, 96 GB, SM120), TP=1, vLLM 0.22.0 (`ray-llm:2.56.0`) — prefix routing (6)
+on 2× of the same card. (Older L40S measurements have been dropped; anything not yet run on the Pro 6000
+is called out in **[TODO — measure on RTX PRO 6000](#todo--measure-on-rtx-pro-6000)** below.)
 
-## TL;DR — optimization OFF vs ON, per knob (isolated A/B on the same card)
+## TL;DR — optimization OFF vs ON, per knob
 
-Each knob is measured **OFF vs ON on the *same* hardware**, so each row isolates that one knob's effect.
-This is **not** the 4×L4 Part-1 deployment — compute knobs (1–5) are the knob toggled off/on on **one
-RTX PRO 6000**; prefix routing (6) is on **2× RTX PRO 6000**; direct streaming is on **8× L40S**
-(serving-layer, GPU-independent). For the whole-stack naive→optimized change (**4×L4 / TP=4 / 128K →
-1× RTX PRO 6000 / 256K**) see [`README.md`](./README.md); per-knob 4×L4 numbers were not collected.
+Each knob is measured **OFF vs ON on the same card**, so each row isolates that one knob's effect. (This is
+*not* the 4×L4 Part-1 stack — for that whole-stack change see [`README.md`](./README.md).)
 
-| # | Knob | OFF (baseline, same card) | ON (optimized) | Gain | Part-3 default |
+| # | Knob | OFF (baseline) | ON (optimized) | Gain | Part-3 default |
 |---|---|---|---|---|---|
 | 1 | `ENABLE_FAST_MODEL_LOADING` | HF download **~85 s** load | RunAI Streamer **~25 s** | **3.4×** faster load | **ON** |
 | 2 | `ENABLE_COMPILE_CACHE` | recompile **74.5 s** / fresh replica | prebuilt cache **8.8 s** | **8.5×** faster compile | **ON** |
@@ -22,10 +19,10 @@ RTX PRO 6000**; prefix routing (6) is on **2× RTX PRO 6000**; direct streaming 
 | 4 | `ENABLE_CUDA_GRAPHS` | eager **15.9 tok/s** | graphs **45.6 tok/s** | **2.87×** decode | **ON** — biggest free win |
 | 5 | `ENABLE_SPEC_DECODE` | base **46 tok/s** | MTP **86 tok/s** | **1.89×** decode † | **OFF** (opt-in) |
 | 6 | `ENABLE_PREFIX_ROUTING` | round-robin **7.79 s** TTFT ✅ | prefix **301 s** TTFT ✗ | **39× worse** ‡ | **OFF** |
-| — | Direct streaming (always on) | relay **144 ms** TPOT @256 | direct **65 ms** @256 | **2.2×** long-output ‡ | **ON** |
+| — | Direct streaming (always on) | — | — | perf A/B is a **[TODO](#todo--measure-on-rtx-pro-6000)** ‡ | **ON** (API surface) |
 
 † MTP's 1.89× decode requires the HF loader, so enabling knob 5 turns knob 1 **off** ([#42060](https://github.com/vllm-project/vllm/issues/42060)) — you trade the fast cold-start for the decode speedup. That's why it's opt-in.
-‡ Two knobs are **workload-dependent, not free wins**: **prefix routing is *worse*** on shared-prefix agent traffic (ON hotspots — so the optimized choice is to keep it OFF / round-robin, §6), and **direct streaming's 2.2× is long-output-only** (neutral on agent traffic — it's on for the native `/v1/messages` + `/v1/responses` API surface, not throughput).
+‡ Two knobs are **workload-dependent, not free wins**: **prefix routing is *worse*** on shared-prefix agent traffic (ON hotspots — so the optimized choice is to keep it OFF / round-robin, §6), and **direct streaming** is on for the native `/v1/messages` + `/v1/responses` **API surface**, not as a throughput lever (its perf A/B is a Pro 6000 TODO).
 
 For knobs **5** and **6**, the baseline setting (OFF / round-robin) is *also* the optimized default. Combos that can't coexist: [`NOTES-incompatibilities.md`](NOTES-incompatibilities.md).
 
@@ -83,28 +80,25 @@ format) — valid values in vLLM 0.22 are `{fp8, fp8_e4m3, nvfp4}`.
 
 On = no `enforce_eager`. Decode tok/s on the real agent prompts (FP8, `max_model_len` 81920):
 
-| config | RTX PRO 6000 | L40S (prior) |
-|---|---|---|
-| base + **eager** | 15.9 tok/s | 9.8 |
-| base + **CUDA graphs** | **45.6** | 18.8 |
+| config | decode tok/s |
+|---|---|
+| base + **eager** | 15.9 |
+| base + **CUDA graphs** | **45.6** |
 
-**≈2.87×** over eager on Blackwell (was 1.9× on L40S) — **the single biggest free win. Keep on.**
-Only turn off (`enforce_eager=True`) to debug.
+**≈2.87× over eager — the single biggest free win. Keep on.** Only turn off (`enforce_eager=True`) to debug.
 
 ## (5) `ENABLE_SPEC_DECODE` — MTP speculative decoding (default **False**)
 
-Decode tok/s, same agent prompts:
+Decode tok/s on the real agent prompts (MTP + fp8 KV + CUDA graphs):
 
-| config | RTX PRO 6000 | L40S (prior) | note |
-|---|---|---|---|
-| **MTP (`qwen3_next_mtp`)** + graphs | **86.4** | (OOM'd / #40880 garbage) | **1.89× over base, COHERENT** ✅ |
-| ngram + graphs | 47.8 | (OOM'd) | now runs, but only **+5%** on agent traffic |
+| config | decode tok/s | note |
+|---|---|---|
+| **MTP (`qwen3_next_mtp`)** | **86.4** | **1.89× over base, COHERENT** ✅ (no #40880 garbage on Blackwell) |
+| ngram | 47.8 | runs, but only **+5%** on agent traffic |
 
-**The L40S verdict flips on Blackwell:** the 96 GB card fits MTP + CUDA graphs (no OOM) and the
-[#40880](https://github.com/vllm-project/vllm/issues/40880) garbage does **not** appear — output is
-coherent at ~1.9×. **Trade-off (why it's default-off):** MTP needs the HF/default loader, so it forfeits
-knob (1)'s fast S3 cold-start ([#42060](https://github.com/vllm-project/vllm/issues/42060)). Flip it on
-only when the 1.9× decode matters more than the ~60 s faster cold start.
+**Why it's default-off:** MTP needs the HF/default loader, so it forfeits knob (1)'s fast S3 cold-start
+([#42060](https://github.com/vllm-project/vllm/issues/42060)). Flip it on only when the 1.89× decode
+matters more than the ~60 s faster cold start.
 
 **`num_speculative_tokens` sweep — on the REAL session replay** (`ds_bench_agent.py` + `sessions.jsonl`, conc 8, 60 s, MTP + fp8 KV + CUDA graphs, `max_model_len` 81920):
 
@@ -114,9 +108,9 @@ only when the 1.9× decode matters more than the ~60 s faster cold start.
 | **3 (new default)** | **99** | **0.72** | **264.2 ms** | **2.64 s** | **+24% tok/s, +44% turns/s, −19% TPOT** |
 | 4 | 74 | 0.55 | 340.5 ms | 4.01 s | **regresses *below* 2** |
 
-**`spec=3` is the sweet spot; `4` regresses** (extra draft/verify cost outweighs the acceptance gain — 3 is the ceiling), so when MTP is enabled the config now uses `num_speculative_tokens=3`. Two bonus findings from this run: all three counts served the traces' real **~73K-token prompts with 0 errors** — the long-context crash [#40756](https://github.com/vllm-project/vllm/issues/40756) (reported on vLLM 0.19.1) does **not** reproduce on 0.22 — and `spec=4` did **not** EngineDeadError here (just ran slower).
+**`spec=3` is the sweet spot; `4` regresses** (extra draft/verify cost outweighs the acceptance gain — 3 is the ceiling), so when MTP is enabled the config uses `num_speculative_tokens=3`. Bonus: all three counts served the traces' real **~73K-token prompts with 0 errors** — the long-context crash [#40756](https://github.com/vllm-project/vllm/issues/40756) (reported on vLLM 0.19.1) does **not** reproduce on 0.22 — and `spec=4` did **not** EngineDeadError (just ran slower).
 
-**On agent traffic specifically:** Claude Code turns are **prefill-dominated** (20–74K-token prompts, 16–188-token outputs), so on the big tool-use turns there's little decode to accelerate — **prefix caching is the lever there, and it's orthogonal to spec decode** (a repeat turn reusing the prior turn's KV prefills ~3× faster regardless). Where there *is* decode, MTP's model-aware head hits **~60–65% acceptance** (structured code/JSON is predictable) for **~2.3–2.8× decode at concurrency 1–4**. Watch the **single-card capacity cliff** (KV/preemption thrash — hits spec and base equally): on the **48 GB L40S** throughput peaked at conc 4 and collapsed at 8 (so `target_ongoing_requests≈4` there). The **96 GB card sustains more**, but the shipped default is a conservative **`target_ongoing_requests=8`** so the autoscaler adds a replica *before* cold ~73K-token prefills pile onto one GPU — raise toward 16 if your prompts are small / cache well.
+**On agent traffic:** Claude Code turns are **prefill-dominated** (20–74K-token prompts, ~16–209-token outputs), so on the big tool-use turns there's little decode for MTP to accelerate — **prefix caching is the lever there, and it's orthogonal to spec decode**. The per-concurrency scaling curve and the single-card capacity cliff that should set `target_ongoing_requests` were **not** re-measured on the Pro 6000 — see the TODO below.
 
 *Also tested, still off:* **KV-cache offload (LMCache)** still fails — `Hybrid KV cache manager … failed
 to convert the KV cache specs` (Qwen3-Next hybrid-arch crash is architectural; the GPU upgrade doesn't fix it).
@@ -129,10 +123,9 @@ synthetic Claude Code replay):
 
 | trace | router | TTFT mean | vs round-robin |
 |---|---|---|---|
-| 8× L40S, 3 real sessions (first signal) | prefix (defaults) | 77.9 s | ~13× worse |
-| 2× RTX PRO 6000, 3 sessions | prefix `imbalanced=5` | 712.9 s | ~263× worse |
-| 2× RTX PRO 6000, 3 sessions | prefix `imbalanced=1` (most aggressive) | 260.2 s | ~96× worse |
-| **2× RTX PRO 6000, 48 users + clean ~57K shared prefix** | **prefix `imbalanced=5`** | **301 s** | **~39× worse** |
+| 3 real sessions | prefix `imbalanced=5` | 712.9 s | ~263× worse |
+| 3 real sessions | prefix `imbalanced=1` (most aggressive) | 260.2 s | ~96× worse |
+| **48 users + clean ~57K shared prefix** | **prefix `imbalanced=5`** | **301 s** | **~39× worse** |
 
 The last row is decisive: even in prefix routing's *best case* (many users + a byte-stable shared prefix)
 it still hotspots ~39× worse than round-robin. **Why:** one **dominant shared prefix** — the same system
@@ -162,24 +155,27 @@ fix [#64328](https://github.com/ray-project/ray/pull/64328), lands in ray-llm 2.
 ## Direct streaming (always on — not a toggle)
 
 HAProxy streams tokens straight from each replica, bypassing the `OpenAiIngress` per-token relay. The
-relay tax is paid **per output token**, so it only bites with long outputs at concurrency.
-
-**Decode-heavy synthetic (OSL=500):**
-| conc | TPOT direct / relay | decode tok/s direct / relay |
-|---|---|---|
-| 32 | 52 / 51 ms | 535 / 551 (tie) |
-| 128 | 56 / 72 ms | 2225 / 1661 |
-| **256** | **65 / 144 ms** | **3820 / 1728 → 2.2×** |
-
-**Real multi-turn agent traces: no benefit** — agent turns are prefill-bound (73K prompts, TTFT 3–7 s)
-with short outputs (~60–209 tok), so there are too few output tokens for the relay tax to matter.
-
-**Verdict:** a ~2× win only for long-output, high-concurrency generation; neutral for agent loops.
-It's always on here **for its real purpose — exposing native `/v1/messages` (Claude Code) and
-`/v1/responses` (Codex)** so those agents connect without a proxy — not as a throughput lever.
+relay tax is paid **per output token**, so it should only matter with long outputs at high concurrency —
+and should be **neutral on agent traffic** (prefill-bound, short outputs). It's on here **for its real
+purpose — exposing native `/v1/messages` (Claude Code) and `/v1/responses` (Codex)** so those agents
+connect without a proxy, not as a throughput lever. The **direct-vs-relay throughput A/B is a Pro 6000
+TODO** (see below).
 
 ---
 
-*The prefix-routing study (§6) and spec-decode findings (§5) are summarized here from the full runs. The
-load-test harnesses (`serve_bench_router_rtx.py`, `ds_bench_agent*.py`, `gen_fair_trace.py`) and the raw
-per-run JSON live in the Anyscale build workspace, not this repo — ask if you want them exported.*
+## TODO — measure on RTX PRO 6000
+
+Removed the legacy L40S runs; these are the experiments to (re-)run on the Pro 6000 to close the gaps:
+
+1. **Spec-decode concurrency curve + capacity cliff** — sweep concurrency (e.g. 1 / 4 / 8 / 16 / 32) on
+   one card, base vs MTP, and find where throughput peaks / KV-preemption thrashes. Use it to set
+   `autoscaling_config.target_ongoing_requests` (currently a **conservative, untested `8`** in the serve
+   file — pending this measurement). Harness: `benchmarks/ds_bench_agent.py` (real replay) + a concurrency sweep.
+2. **Direct streaming vs relay** — A/B the same service with `RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING` on/off
+   at long-output / high-concurrency, and on the agent replay, to quantify the win (expected: sizable on
+   long-output high-conc, ~neutral on agent traffic) on the Pro 6000.
+3. *(optional)* **ngram vs MTP** re-confirm on Pro 6000 (expected: ngram ≪ MTP on agent traffic; ngram
+   avoids the RunAI-loader conflict but barely helps).
+
+*Raw per-run JSON + the load-test harnesses (`serve_bench_router_rtx.py`, `ds_bench_agent*.py`,
+`gen_fair_trace.py`) live in the Anyscale build workspace, not this repo — ask if you want them exported.*

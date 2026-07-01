@@ -26,9 +26,9 @@ ENABLE_FP8_KV_CACHE = True
 #     OFF -> enforce_eager=True (only to debug, or to fit spec-decode on a small GPU; see NOTES).
 ENABLE_CUDA_GRAPHS = True
 
-# (5) SPECULATIVE DECODING (MTP) — ~1.9x decode on RTX PRO 6000, coherent (the L40S #40880 garbage does
-#     NOT occur on Blackwell).  ⚠ Needs the HF loader, so it turns FAST MODEL LOADING off (vllm#42060):
-#     you trade the fast S3 cold-start for the 1.9x decode.  Default OFF.  See BENCHMARKS.md.
+# (5) SPECULATIVE DECODING (MTP) — ~1.9x decode on RTX PRO 6000, coherent output (the #40880
+#     degenerate-output bug does NOT occur on Blackwell).  ⚠ Needs the HF loader, so it turns FAST MODEL
+#     LOADING off (vllm#42060): you trade the fast S3 cold-start for the 1.9x decode.  Default OFF.  See BENCHMARKS.md.
 ENABLE_SPEC_DECODE = False
 
 # (6) PREFIX-AWARE ROUTING — send a session's turns to the replica that cached its prefix. Measured to
@@ -123,9 +123,9 @@ deployment_config = dict(
     autoscaling_config=dict(
         min_replicas=1,            # always-on baseline: no cold start during work hours
         max_replicas=4,            # scale out for peak; each replica = 1 RTX PRO 6000 node (g7e.4xlarge)
-        target_ongoing_requests=8,  # scale out EARLY: the L40S cliffed at conc~8 (BENCHMARKS §5). The 96GB
-                                    # card sustains more, but 8 keeps the autoscaler from piling cold ~73K-tok
-                                    # prefills on one GPU (TTFT/preemption). Raise toward 16 if prompts are small / cache well.
+        target_ongoing_requests=8,  # CONSERVATIVE, untested on Pro 6000 — scale out early so the autoscaler
+                                    # doesn't pile cold ~73K-tok prefills on one GPU (TTFT/preemption). TODO: measure
+                                    # the Pro 6000 capacity cliff (BENCHMARKS "TODO") and tune; raise toward 16 if prompts cache well.
         upscale_delay_s=30,
         downscale_delay_s=600,
     ),
