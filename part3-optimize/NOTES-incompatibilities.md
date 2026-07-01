@@ -23,12 +23,13 @@ any toggle in `serve_qwen3_6_27b_optimized.py`.
 | **torch.compile cache** (shared / S3) | ✅ Yes | ~137s → ~0s recompile; bring-up 288s → 76s. |
 | **FP8 KV cache** | ✅ Yes | Fits **full 256K** on the 96GB RTX PRO 6000 (was 128K on a 48GB L40S). |
 | **Autoscale (multi-replica)** | ✅ Yes (`max_replicas>1`) | Multi-user throughput. |
-| **Prefix-aware routing** | ⚠️ **Measure first** | Hotspotted ~13× worse TTFT than round-robin on the real agent replay (load imbalance). Tune `imbalanced_threshold` + validate on diverse traffic. See **BENCHMARKS.md**. |
+| **Prefix-aware routing** | ❌ **Off (round-robin)** | Hotspots hard on shared-prefix agent traffic — up to **263× worse TTFT**, and still ~39× even with many users + a clean shared prefix (BENCHMARKS §6). Only worth it for *many distinct* large prefixes (multi-tenant / per-doc RAG); validate on your own traffic first. |
 | **Direct streaming** (`/v1/messages`, `/v1/responses`) | ✅ Yes (with router fix) | One endpoint serves Claude Code + Codex natively. **Perf-wise:** 2.2× on long-output/high-conc, but **neutral on agent traffic** (keep it for the API surface, not as a throughput lever). See **BENCHMARKS.md**. |
 | **Speculative decoding (MTP)** | L40S: ❌ no · **RTX PRO 6000: ✅ ~1.9×** | On L40S spec+graphs OOM'd & MTP hit #40880; on the 96GB Blackwell MTP+graphs fits, is **coherent**, and runs **1.89×** (needs HF loader — drops RunAI fast-load). ngram only +5%. Use **`num_speculative_tokens=3`** (sweet spot on the agent replay; 4 regresses), and MTP served real 73K-tok prompts with 0 errors on 0.22 (#40756 doesn't reproduce). See ❶❷❸ + BENCHMARKS. |
 
 **Bottom line for 1× L40S:** turn on CUDA graphs (default) + RunAI Streamer + compile cache + FP8 KV
-+ autoscale/prefix routing + direct streaming. **Leave speculative decoding off.**
++ autoscale + direct streaming. **Leave speculative decoding *and* prefix routing off** — prefix routing
+hotspots on shared-prefix agent traffic (round-robin wins; see §6/BENCHMARKS).
 
 ---
 
@@ -42,11 +43,12 @@ init: `Cannot find any safetensors model weights … model_streamer/<hash>`. Kno
 [vllm#42060](https://github.com/vllm-project/vllm/issues/42060); the open fix PR #42079 does **not**
 resolve it (verified E2E). → Pick fast-download **or** MTP, not both.
 
-### ❷ MTP speculative decoding ✗ CUDA graphs (on this Qwen3-Next arch)
-MTP + CUDA graphs produces **degenerate/garbage output** on the Qwen3-Next hybrid architecture
-([vllm#40880](https://github.com/vllm-project/vllm/issues/40880)). To get correct output you must set
-`enforce_eager=True` — which **forfeits the ~1.9× CUDA-graph speedup** (the single biggest win). So
-the headline "MTP = 2.27×" is only reachable with graphs, which aren't safe here.
+### ❷ MTP speculative decoding ✗ CUDA graphs — **L40S only; does NOT reproduce on Blackwell**
+On the **48 GB L40S**, MTP + CUDA graphs produced **degenerate/garbage output** on the Qwen3-Next hybrid
+arch ([vllm#40880](https://github.com/vllm-project/vllm/issues/40880)), forcing `enforce_eager=True` and
+forfeiting the CUDA-graph speedup. **On the RTX PRO 6000 (SM120) this does NOT occur** — MTP + CUDA graphs
+is **coherent** (validated), so the shipped config leaves **CUDA graphs ON when `ENABLE_SPEC_DECODE=True`**.
+Treat ❷ as a resolved-on-Blackwell caveat; it still bites only if you run MTP on an L40S.
 
 ### ❸ Speculative decoding + CUDA graphs ✗ a 44 GB L40S
 Even setting #2 aside: vLLM does **full CUDA-graph capture over 51 batch sizes** for spec decode, and
@@ -75,9 +77,10 @@ on ≥ 2.57 the stock `PrefixCacheAffinityRouter` works under direct streaming a
 
 ## What *does* compose (turn these on together)
 
-RunAI Streamer + torch.compile cache + FP8 KV + CUDA graphs + autoscale + prefix routing
-(with the router fix) + direct streaming + tool calling (`qwen3_coder`) + reasoning parser (`qwen3`).
-That's exactly the set wired into `serve_qwen3_6_27b_optimized.py`. The only big lever deliberately left
-**off** there is `ENABLE_SPEC_DECODE` (see ❶–❸).
+RunAI Streamer + torch.compile cache + FP8 KV + CUDA graphs + autoscale + direct streaming + tool calling
+(`qwen3_coder`) + reasoning parser (`qwen3`). That's the set wired **on** in `serve_qwen3_6_27b_optimized.py`.
+Two big levers are deliberately **off**: `ENABLE_SPEC_DECODE` (see ❶–❸) and `ENABLE_PREFIX_ROUTING` — it
+hotspots on shared-prefix agent traffic (§6 / BENCHMARKS). The `DirectStreamingPrefixCacheRouter` fix (❹)
+exists so prefix routing *can* run under direct streaming, but round-robin is the default.
 
 Full measurements + the per-knob effect (incl. the spec-decode & prefix-routing studies): [`BENCHMARKS.md`](BENCHMARKS.md).

@@ -123,7 +123,9 @@ deployment_config = dict(
     autoscaling_config=dict(
         min_replicas=1,            # always-on baseline: no cold start during work hours
         max_replicas=4,            # scale out for peak; each replica = 1 RTX PRO 6000 node (g7e.4xlarge)
-        target_ongoing_requests=16, # 96GB Blackwell sustains far more than L40S — tune to your traffic
+        target_ongoing_requests=8,  # scale out EARLY: the L40S cliffed at conc~8 (BENCHMARKS §5). The 96GB
+                                    # card sustains more, but 8 keeps the autoscaler from piling cold ~73K-tok
+                                    # prefills on one GPU (TTFT/preemption). Raise toward 16 if prompts are small / cache well.
         upscale_delay_s=30,
         downscale_delay_s=600,
     ),
