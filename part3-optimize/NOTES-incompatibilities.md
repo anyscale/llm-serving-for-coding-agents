@@ -41,9 +41,10 @@ resolve it (verified E2E). → Pick fast-download **or** MTP, not both. (The con
 Turning on direct streaming (`RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1`) *and* a content-based router makes
 every request hang (HTTP 000) — the proxy never parses the raw body the direct-streaming ingress forwards.
 On `ray-llm:2.56.0` that body arrives as `pending_request.kwargs["request_body"]` (not `args`), which the
-stock router doesn't read. Filed as [ray#64326](https://github.com/ray-project/ray/issues/64326). **Fix:**
-use the `DirectStreamingPrefixCacheRouter` subclass (parses the body from `args` **and** `kwargs`) — or fall
-back to the default `RoundRobinRouter`. **Upstream fix:**
+stock router doesn't read — and its prefix logic is gated on non-empty `args`, so it silently falls back
+to load-balancing. Filed as [ray#64326](https://github.com/ray-project/ray/issues/64326). **Fix:** use the
+`DirectStreamingPrefixCacheRouter` subclass (it normalizes `kwargs["request_body"]` into `args` so the stock
+prefix logic runs) — or fall back to the default `RoundRobinRouter`. **Upstream fix:**
 [ray-project/ray#64328](https://github.com/ray-project/ray/pull/64328), landing in **Ray Serve LLM 2.57** —
 on ≥ 2.57 the stock router works under direct streaming and the subclass can be dropped. (In this tutorial
 direct streaming is **always on**, so prefix routing, when enabled, always uses the subclass.)

@@ -1,9 +1,11 @@
 # Part 3 — Optimize the deployment
 
 Re-architect the naive Part-1 service into a multi-user, low-latency, cost-aware one — **same model id
-(`qwen3.6-27b`), same clients** (Part 2 keeps working; just repoint `ANYSCALE_BASE_URL` here). Every
-default below is **measured, not guessed** — the numbers are in [`BENCHMARKS.md`](BENCHMARKS.md), the
-incompatible-combo matrix in [`NOTES-incompatibilities.md`](NOTES-incompatibilities.md).
+(`qwen3.6-27b`), same clients** (Part 2 keeps working; just repoint `ANYSCALE_BASE_URL` here). The main
+optimization defaults are **measured, not guessed** — the numbers are in [`BENCHMARKS.md`](BENCHMARKS.md),
+the incompatible-combo matrix in [`NOTES-incompatibilities.md`](NOTES-incompatibilities.md). One exception:
+the autoscale `target_ongoing_requests` is a **conservative default not yet measured on the Pro 6000**
+(see the BENCHMARKS "TODO").
 
 ## What changes vs. naive
 

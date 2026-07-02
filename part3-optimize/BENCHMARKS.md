@@ -114,8 +114,7 @@ to convert the KV cache specs` (Qwen3-Next hybrid-arch crash is architectural; t
 ## (6) `ENABLE_PREFIX_ROUTING` — PrefixCacheAffinityRouter (default **False**)
 
 Sends a session's turn N+1 to the replica that cached turn N's prefix. **Measured to hotspot
-catastrophically** on shared-prefix agent traffic across a 4-experiment study (2× RTX PRO 6000, real +
-synthetic Claude Code replay):
+catastrophically** on shared-prefix agent traffic (2× RTX PRO 6000, real + synthetic Claude Code replay):
 
 | trace | router | TTFT mean | vs round-robin |
 |---|---|---|---|

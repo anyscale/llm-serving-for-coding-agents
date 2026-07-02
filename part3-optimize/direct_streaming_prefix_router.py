@@ -1,27 +1,24 @@
 # direct_streaming_prefix_router.py
 #
-# Portable fix so PrefixCacheAffinityRouter WORKS under direct streaming.
+# Make PrefixCacheAffinityRouter actually do prefix affinity UNDER DIRECT STREAMING on ray-llm 2.56.0.
 #
-# Why this is needed: under direct streaming the ingress forwards the RAW request body (a `bytes`/`str`,
-# not a parsed Chat/Completion object) to the request router. WHERE it lands is version-dependent:
-#   - ray-llm 2.56.0 (pinned here): as a KWARG — the ingress calls
-#     `choose_replica(request_body=<bytes>, body_truncated=...)`, so the body is in
-#     `pending_request.kwargs["request_body"]`, NOT `pending_request.args`.
-#   - some paths/versions put the raw body in `pending_request.args` instead.
-# Stock `PrefixCacheAffinityRouter._extract_text_from_request` only scans `args` for an object with
-# `.messages`/`.prompt`, so on 2.56.0 it finds nothing and raises
-# `ValueError: No request with message or prompt attribute found in pending_request.args`,
-# which crashes the proxy routing loop -> every request hangs (curl HTTP 000). See
-# spec_decode_validation/bug_report_direct_streaming_prefix_router.md and ray#64326.
+# The problem (verified against the pinned ray source): under direct streaming the ingress passes the raw
+# request body as `pending_request.kwargs["request_body"]` and leaves `pending_request.args` EMPTY. The
+# stock router only runs its prefix logic when args is non-empty — both `_prefix_match_best_replicas`
+# (the routing decision) and `on_request_routed` (the prefix-tree update) gate their text extraction on
+# `pending_request.args is not None and len(pending_request.args) > 0`. So with an empty args the router
+# never extracts the prompt, silently falls back to load-balancing, and does NO affinity. (An earlier
+# attempt that only overrode `_extract_text_from_request` was dead code for exactly this reason — the
+# guard means it's never called under direct streaming.)
 #
-# This subclass overrides only `_extract_text_from_request` to scan BOTH `args` and `kwargs` (incl.
-# `kwargs["request_body"]`), parse the raw bytes/str body, and degrade gracefully (return None ->
-# load-balanced fallback) instead of raising. It's a proper custom router class (imported by the proxy
-# from your working_dir), so no site-packages edits.
+# The fix (per review): before delegating to the stock methods, NORMALIZE the direct-streaming body into
+# `args` — parse `kwargs["request_body"]` and drop a tiny stand-in (with `.messages`/`.prompt`) into
+# `pending_request.args`, so the stock args-gated code path runs unchanged.
 #
-# Upstream fix: https://github.com/ray-project/ray/pull/64328 — landing in Ray Serve LLM 2.57. Once you
-# run ray-llm >= 2.57 you can DELETE this file and use the stock ray.serve.llm PrefixCacheAffinityRouter
-# directly under direct streaming (this subclass is just the stopgap until then).
+# Best-effort stopgap for ray-llm < 2.57 ONLY. It depends on internal method names + `args` being
+# assignable; if either differs on your build it degrades gracefully to the stock behavior (round-robin —
+# which is this tutorial's default anyway). Upstream fix https://github.com/ray-project/ray/pull/64328
+# lands in Ray Serve LLM 2.57 — on >= 2.57 DELETE this file and use the stock PrefixCacheAffinityRouter.
 #
 # Usage: set request_router_class=DirectStreamingPrefixCacheRouter in deployment_config.request_router_config.
 import json
@@ -30,38 +27,50 @@ from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router i
 )
 
 
-class DirectStreamingPrefixCacheRouter(PrefixCacheAffinityRouter):
-    def _extract_text_from_request(self, pending_request):
-        # Gather every place the request/body can arrive, across ray-llm versions:
-        #   - OpenAI ingress: a parsed Chat/Completion object in .args (has .messages / .prompt)
-        #   - Direct streaming on ray-llm 2.56.0: raw body in .kwargs["request_body"]  <-- the pinned path
-        #   - older/other paths: raw body somewhere in .args
-        kwargs = getattr(pending_request, "kwargs", None) or {}
-        candidates = list(pending_request.args)
-        if "request_body" in kwargs:
-            candidates.insert(0, kwargs["request_body"])   # 2.56.0 direct-streaming body — check first
-        candidates.extend(v for k, v in kwargs.items() if k != "request_body")
+class _BodyShim:
+    """Minimal stand-in the stock router's args-based extraction accepts (it looks for .messages/.prompt)."""
+    def __init__(self, messages=None, prompt=None):
+        if messages is not None:
+            self.messages = messages
+        if prompt is not None:
+            self.prompt = prompt
 
-        prompt = None
-        for arg in candidates:
-            # Parsed request object (normal OpenAI ingress).
-            for valid_input_type in ("messages", "prompt"):
-                if hasattr(arg, valid_input_type):
-                    prompt = getattr(arg, valid_input_type)
-                    break
-            if prompt is not None:
-                break
-            # Raw body (direct streaming): bytes/str JSON -> pull messages/prompt.
-            if isinstance(arg, (bytes, bytearray, str)):
-                try:
-                    body = json.loads(arg)
-                except (ValueError, TypeError):
-                    continue  # truncated / non-JSON body -> try the next candidate
-                if isinstance(body, dict):
-                    prompt = body.get("messages") or body.get("prompt")
-                    if prompt is not None:
-                        break
-        if prompt is None:
-            # No extractable text -> don't crash the routing loop; let the caller load-balance.
-            return None
-        return self._normalize_prompt_to_string(prompt)
+
+def _inject_body_into_args(pending_request):
+    """If args is empty but the direct-streaming body is in kwargs['request_body'], parse it and put a
+    stand-in into args so the stock prefix logic (gated on non-empty args) runs. No-op otherwise."""
+    if pending_request is None or getattr(pending_request, "args", None):
+        return  # normal OpenAI ingress already has the parsed request object in args
+    kwargs = getattr(pending_request, "kwargs", None) or {}
+    body = kwargs.get("request_body")
+    if body is None:
+        return
+    try:
+        parsed = json.loads(body) if isinstance(body, (bytes, bytearray, str)) else body
+    except (ValueError, TypeError):
+        return  # truncated / non-JSON body -> leave args empty -> stock fallback (round-robin)
+    if not isinstance(parsed, dict):
+        return
+    messages, prompt = parsed.get("messages"), parsed.get("prompt")
+    if messages is None and prompt is None:
+        return
+    shim = (_BodyShim(messages=messages, prompt=prompt),)
+    try:
+        pending_request.args = shim
+    except Exception:
+        try:
+            object.__setattr__(pending_request, "args", shim)  # frozen dataclass fallback
+        except Exception:
+            pass  # can't normalize on this build -> stock fallback (round-robin, the safe default)
+
+
+class DirectStreamingPrefixCacheRouter(PrefixCacheAffinityRouter):
+    # async in the stock class — normalize the body into args, then delegate to the real prefix matcher.
+    async def _prefix_match_best_replicas(self, pending_request, candidate_replicas):
+        _inject_body_into_args(pending_request)
+        return await super()._prefix_match_best_replicas(pending_request, candidate_replicas)
+
+    # sync in the stock class — same normalization so the prefix tree is updated with the served prefix.
+    def on_request_routed(self, pending_request, replica_id, result):
+        _inject_body_into_args(pending_request)
+        return super().on_request_routed(pending_request, replica_id, result)
