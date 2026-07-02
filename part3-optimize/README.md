@@ -19,7 +19,8 @@ unmeasured default is autoscale `target_ongoing_requests`, which is intentionall
 | Endpoints | OpenAI chat | OpenAI chat plus native `/v1/messages` and `/v1/responses` |
 
 Why RTX PRO 6000 + FP8? FP8 weights plus an FP8 256K KV cache fit comfortably on the 96 GB card, with about
-6.5× concurrency at full context and better quality than 4-bit. NVFP4 also fits if you need more headroom.
+6.5× concurrency at full context and better quality than 4-bit. (Note: `nvfp4` KV cache is not usable on this
+GPU — its FP4 attention kernel is datacenter-Blackwell-only and crashes on SM120; use `fp8`.)
 
 ## Control Panel
 

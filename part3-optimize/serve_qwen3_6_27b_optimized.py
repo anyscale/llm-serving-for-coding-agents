@@ -32,8 +32,9 @@ ENABLE_CUDA_GRAPHS = True
 ENABLE_SPEC_DECODE = False
 
 # (6) PREFIX-AWARE ROUTING — send a session's turns to the replica that cached its prefix. Measured to
-#     HOTSPOT (~13x worse TTFT than round-robin) on our agent replay — keep OFF unless you tune
-#     imbalanced_threshold and validate on YOUR diverse traffic. Only matters with max_replicas > 1.
+#     HOTSPOT badly (up to ~263x worse TTFT than round-robin; still ~39x even with many users + a clean
+#     shared prefix — see BENCHMARKS.md §6) — keep OFF unless you have many DISTINCT large prefixes and
+#     validate on YOUR traffic. Only matters with max_replicas > 1.
 ENABLE_PREFIX_ROUTING = False
 
 # DIRECT STREAMING is REQUIRED for this demo (Parts 1 & 2 connect Claude Code / Codex / Cursor straight to
