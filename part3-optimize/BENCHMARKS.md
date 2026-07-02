@@ -29,14 +29,6 @@ agent traffic hotspots badly under affinity routing, and the built-in router als
 ray-llm 2.56 ([ray#64328](https://github.com/ray-project/ray/pull/64328)). See
 [`NOTES-incompatibilities.md`](NOTES-incompatibilities.md) for combinations that cannot coexist.
 
-**External docs for the features below (Ray Serve LLM docs linked where available):**
-
-- [Ray Deployment Initialization](https://docs.ray.io/en/latest/serve/llm/user-guides/deployment-initialization.html) — covers RunAI Streamer, torch.compile cache, CUDA graph capture
-- [Ray Prefix-aware Routing](https://docs.ray.io/en/latest/serve/llm/user-guides/prefix-aware-routing.html)
-- [Ray Direct Streaming](https://docs.ray.io/en/latest/serve/llm/user-guides/direct-streaming.html)
-- [vLLM FP8 KV Cache](https://docs.vllm.ai/en/stable/features/quantization/quantized_kvcache/) — engine-level, no Ray wrapper page yet
-- [vLLM MTP / Speculative Decoding](https://docs.vllm.ai/en/stable/features/speculative_decoding/mtp/) — engine-level, no Ray wrapper page yet
-
 ## Workloads
 
 | Input | Output | Source |
