@@ -9,7 +9,7 @@ unmeasured default is autoscale `target_ongoing_requests`, which is intentionall
 
 ## What Changes
 
-| Area | Part 1 | Part 3 |
+| Area | [Naive](../part1-deploy-naive/serve_qwen3_6_27b_naive.py) | [Optimized](serve_qwen3_6_27b_optimized.py) |
 |---|---|---|
 | GPU | 4× L4, TP=4 | 1× RTX PRO 6000 96 GB, TP=1 (`g7e.4xlarge`) |
 | Context | FP8, 128K | FP8, full 256K |

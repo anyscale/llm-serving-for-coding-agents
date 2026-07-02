@@ -6,22 +6,6 @@ These findings were measured or root-caused on `qwen3.6-27b` FP8, 1× RTX PRO 60
 (`g7e.4xlarge`), `ray-llm:2.56.0-py312-cu130`, and vLLM 0.22.0. Full numbers are in
 [`BENCHMARKS.md`](BENCHMARKS.md).
 
-## Recommended Defaults
-
-| Optimization | Default | Reason |
-|---|---|---|
-| CUDA graphs | On | ~2.87× decode speedup. |
-| RunAI Streamer | On | Model load drops from ~85 s to ~25 s. |
-| torch.compile cache | On | Compile drops from ~74.5 s to ~8.8 s. |
-| FP8 KV cache | On | Full 256K context fits on the 96 GB card. |
-| Autoscale | On | Needed for multi-user throughput. |
-| Direct streaming | On | Required for native Claude Code and Codex endpoints. |
-| Speculative decoding | Off | Faster decode, but disables RunAI Streamer. |
-| Prefix routing | Off | Hotspots on shared-prefix agent traffic. |
-
-Bottom line: ship CUDA graphs, RunAI Streamer, compile cache, FP8 KV, autoscale, and direct streaming. Leave
-speculative decoding and prefix routing off unless your workload justifies the tradeoff.
-
 ## Hard Incompatibilities
 
 ### 1. RunAI Streamer and MTP Spec Decode

@@ -18,21 +18,22 @@ Each row compares one knob off vs on, on the same hardware.
 |---|---|---|---|---|---|
 | 1 | `ENABLE_FAST_MODEL_LOADING` | HF download, ~85 s | RunAI Streamer, ~25 s | 3.4× faster load | On |
 | 2 | `ENABLE_COMPILE_CACHE` | Recompile, 74.5 s | Prebuilt cache, 8.8 s | 8.5× faster compile | On |
-| 3 | `ENABLE_FP8_KV_CACHE` | bf16 KV, <256K context | fp8 KV, full 256K | 6.53× concurrency | On |
+| 3 | `ENABLE_FP8_KV_CACHE` | bf16 KV, ~3.3× concurrency at 256K | fp8 KV, full 256K | 6.53× concurrency | On |
 | 4 | `ENABLE_CUDA_GRAPHS` | Eager, 15.9 tok/s | Graphs, 45.6 tok/s | 2.87× decode | On |
 | 5 | `ENABLE_SPEC_DECODE` | Base, 45.6 tok/s | MTP, 86.4 tok/s | 1.89× decode | Off |
 | 6 | `ENABLE_PREFIX_ROUTING` | Round-robin, 7.79 s TTFT | Prefix, 301 s TTFT | 39× worse | Off |
 
-Spec decode is off because it disables the fast S3 loader. Prefix routing is off because shared-prefix agent
-traffic hotspots badly under affinity routing. See [`NOTES-incompatibilities.md`](NOTES-incompatibilities.md)
-for combinations that cannot coexist.
+Spec decode is off because it disables the fast S3 loader on vLLM 0.22.0
+([vllm#42060](https://github.com/vllm-project/vllm/issues/42060)). Prefix routing is off because shared-prefix
+agent traffic hotspots badly under affinity routing, and the built-in router also hangs with direct streaming on
+ray-llm 2.56 ([ray#64328](https://github.com/ray-project/ray/pull/64328)). See
+[`NOTES-incompatibilities.md`](NOTES-incompatibilities.md) for combinations that cannot coexist.
 
 ## Workloads
 
-| Shape | Input | Output | Source |
-|---|---|---|---|
-| Decode-heavy synthetic | ~50 tokens | 500 tokens | Stand-in for long code generation |
-| Real multi-turn agent | Up to 73K tokens | ~60–209 tokens | Claude Code session replays |
+| Input | Output | Source |
+|---|---|---|
+| Up to 73K tokens | ~60–209 tokens | Claude Code session replays |
 
 ## 1. Fast Model Loading
 
@@ -67,7 +68,7 @@ Verdict: keep on. Turning it off makes each scale-up compile cold.
 
 | KV dtype | Max context that fits | Concurrency at 256K |
 |---|---|---|
-| bf16 | <256K | — |
+| bf16 | Full 256K | ~3.27× |
 | fp8 | Full 256K | 6.53× |
 
 Verdict: keep on — `fp8` is the right KV dtype here. Do **not** use `nvfp4` for the KV cache on this GPU:

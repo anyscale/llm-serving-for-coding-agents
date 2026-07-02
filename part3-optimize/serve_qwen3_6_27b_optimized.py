@@ -2,7 +2,7 @@
 #
 # OPTIMIZED deployment for 1x NVIDIA RTX PRO 6000 (96 GB Blackwell, AWS g7e.4xlarge), TP=1.
 # Every optimization is a toggle in the CONTROL PANEL below — flip each ON/OFF to see its effect.
-# The defaults are the validated optimized setup: FP8 weights + FP8 KV + full 256K context (6.53x
+# The defaults are the validated optimized setup: FP8 weights + FP8 KV + full 256K context (6.53×
 # concurrency), CUDA graphs, fast S3 model loading, and the prebuilt compile cache.
 # Full measurements + the "knobs that can't be combined" matrix: BENCHMARKS.md / NOTES-incompatibilities.md.
 
@@ -19,7 +19,7 @@ ENABLE_FAST_MODEL_LOADING = True
 ENABLE_COMPILE_CACHE = True
 
 # (3) FP8 KV CACHE — store K/V in fp8: ~half the KV memory, which is what lets the full 256K context fit
-#     (6.53x concurrency on 96GB).  OFF -> default bf16 KV; 256K won't fit, so lower max_model_len.
+#     (6.53× concurrency on 96GB).  OFF -> default bf16 KV; 256K won't fit, so lower max_model_len.
 ENABLE_FP8_KV_CACHE = True
 
 # (4) CUDA GRAPHS — the single biggest free decode win (~2.87x on Blackwell).  ON = no enforce_eager.
