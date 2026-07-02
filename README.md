@@ -12,12 +12,13 @@ streaming** on, so a single endpoint speaks all three coding-agent APIs natively
 | `POST /v1/messages` | Claude Code (Anthropic) |
 | `POST /v1/responses` | Codex (OpenAI Responses) |
 
-## Two steps
+## Three steps
 
 | | What you get | Folder |
 |---|---|---|
 | **1 — Deploy** | A working endpoint on Anyscale (4× L4), with **direct streaming** enabled so it serves all three agent APIs from one service. | [`part1-deploy-naive/`](./part1-deploy-naive/) |
 | **2 — Connect (direct)** | Point Claude Code, Codex, and Cursor **straight at the native endpoints** — no LiteLLM, no `pip install`. | [`part2-connect-clients-direct/`](./part2-connect-clients-direct/) |
+| **3 — Optimize** | Re-architect onto **1× RTX PRO 6000 (96 GB)** at **full 256K FP8** — fast S3 loading, torch.compile cache, FP8 KV, autoscaling — as a flip-per-knob control panel, with a **measured per-knob benchmark table** and the **vLLM / Ray Serve LLM gotchas** (incompatible combos, prefix-routing hotspot, MTP fragility) behind every default. | [`part3-optimize/`](./part3-optimize/) |
 
 ## Quick start
 

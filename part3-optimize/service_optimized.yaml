@@ -1,0 +1,23 @@
+# service_optimized.yaml — the OPTIMIZED deployment, 1x RTX PRO 6000 (96GB Blackwell), autoscale 1->4.
+# Custom image adds runai-model-streamer (needed when ENABLE_SPEC_DECODE=False, the default).
+name: qwen3-6-27b-fp8-rtxpro6000-opt
+# Builds ray-llm + runai-model-streamer from the Containerfile at deploy time.
+# Alternative: pre-build once (`anyscale image build -f Containerfile`) and set image_uri instead.
+containerfile: Containerfile
+# Direct-streaming flags as SERVICE-LEVEL env_vars so the Ray Serve *controller* inherits them (a
+# per-deployment runtime_env reaches only the replicas → deploy fails "ingress_request_router requires
+# HAProxy"). They expose native /v1/messages + /v1/responses for Part 2a; serve_qwen3_6_27b_optimized.py
+# reads them back to pick the request router. Remove both to turn direct streaming off.
+env_vars:
+  RAY_SERVE_ENABLE_HA_PROXY: "1"
+  RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+compute_config:
+  worker_nodes:
+    # AWS g7e.4xlarge = 1x NVIDIA RTX PRO 6000 96GB (Blackwell SM120), 16 vCPU, 128 GiB host RAM; TP=1.
+    # (Host RAM matters: g7e.2xlarge's 64 GiB OOMs loading the 27B + 256K init — use g7e.4xlarge+.)
+    - instance_type: g7e.4xlarge
+      min_nodes: 1                 # always-on baseline (no cold start during work hours)
+      max_nodes: 4                 # autoscale headroom (matches max_replicas=4)
+working_dir: .
+applications:
+  - import_path: serve_qwen3_6_27b_optimized:app
