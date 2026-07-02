@@ -47,17 +47,17 @@ The control panel automatically disables `ENABLE_FAST_MODEL_LOADING` when `ENABL
 MTP + CUDA graphs is coherent on RTX PRO 6000. The older `#40880` degenerate-output issue does not occur
 here, so CUDA graphs can stay on with MTP.
 
-### 2. Direct Streaming and Stock Prefix Routing
+### 2. Direct Streaming and Built-In Prefix Routing
 
-Direct streaming plus the stock `PrefixCacheAffinityRouter` hangs on ray-llm 2.56. The direct-streaming
-ingress puts the raw body in `pending_request.kwargs["request_body"]`, but the stock router only checks
+Direct streaming plus Ray's built-in `PrefixCacheAffinityRouter` hangs on ray-llm 2.56. The direct-streaming
+ingress puts the raw body in `pending_request.kwargs["request_body"]`, but that router only checks
 `args`, so prefix routing never sees the request body correctly.
 
 Options:
 
 - Use the default `RoundRobinRouter` (recommended for this workload).
 - If you opt into prefix routing, use `DirectStreamingPrefixCacheRouter`.
-- On Ray Serve LLM 2.57 or newer, use the stock router after
+- On Ray Serve LLM 2.57 or newer, use Ray's built-in router after
   [ray#64328](https://github.com/ray-project/ray/pull/64328) lands.
 
 In this tutorial, direct streaming is always on. That is why prefix routing, when enabled, uses the subclass.

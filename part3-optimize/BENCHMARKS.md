@@ -22,7 +22,6 @@ Each row compares one knob off vs on, on the same hardware.
 | 4 | `ENABLE_CUDA_GRAPHS` | Eager, 15.9 tok/s | Graphs, 45.6 tok/s | 2.87× decode | On |
 | 5 | `ENABLE_SPEC_DECODE` | Base, 45.6 tok/s | MTP, 86.4 tok/s | 1.89× decode | Off |
 | 6 | `ENABLE_PREFIX_ROUTING` | Round-robin, 7.79 s TTFT | Prefix, 301 s TTFT | 39× worse | Off |
-| — | Direct streaming | — | Native `/v1/messages` and `/v1/responses` | Required for agent APIs | On |
 
 Spec decode is off because it disables the fast S3 loader. Prefix routing is off because shared-prefix agent
 traffic hotspots badly under affinity routing. See [`NOTES-incompatibilities.md`](NOTES-incompatibilities.md)
