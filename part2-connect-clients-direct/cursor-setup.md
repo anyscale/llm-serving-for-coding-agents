@@ -1,9 +1,8 @@
 # Connect Cursor to `qwen3.6-27b` (direct)
 
 Cursor is **OpenAI-compatible** and routes calls through **its own cloud**, so it always points at a
-**publicly reachable** endpoint — never a local proxy. That means Cursor's setup is **identical** whether
-or not direct streaming is on: it only uses `/v1/chat/completions`, which the service serves either way.
-Point Cursor straight at the Anyscale service.
+**publicly reachable** endpoint. This guide assumes the service has direct streaming enabled, as in
+Part 1. Point Cursor straight at the Anyscale service's `/v1` endpoint.
 
 ## Configure
 

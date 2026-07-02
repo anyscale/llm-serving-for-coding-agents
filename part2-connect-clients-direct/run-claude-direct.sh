@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # Launch Claude Code DIRECTLY against the Anyscale service's native Anthropic endpoint.
-# No proxy, no LiteLLM, no pip install — the service serves /v1/messages because Part 1
-# turns on direct streaming. Claude Code POSTs to ${ANTHROPIC_BASE_URL}/v1/messages.
+# The service serves /v1/messages because Part 1 turns on direct streaming. Claude Code
+# POSTs to ${ANTHROPIC_BASE_URL}/v1/messages.
 #
 # Usage:
 #   ./run-claude-direct.sh            # interactive
