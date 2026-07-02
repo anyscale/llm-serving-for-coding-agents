@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # Launch the OpenAI Codex CLI DIRECTLY against the Anyscale service's native /v1/responses
-# endpoint. No proxy, no LiteLLM — the service serves /v1/responses because Part 1 turns on
-# direct streaming (vLLM's native Responses route).
+# endpoint. The service serves /v1/responses because Part 1 turns on direct streaming
+# (vLLM's native Responses route).
 #
 #   Codex ──OpenAI /v1/responses──►  Anyscale service (qwen3.6-27b, direct streaming)
 #
