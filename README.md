@@ -15,9 +15,22 @@ running a separate proxy.
 | 2 | Connect Claude Code, Codex, and Cursor directly to the service. | [`part2-connect-clients-direct/`](./part2-connect-clients-direct/) |
 | 3 | Optimize the deployment for a 1x RTX PRO 6000 with 256K FP8 context. | [`part3-optimize/`](./part3-optimize/) |
 
-## API Endpoints
+## API Endpoints (via Direct Streaming)
 
-The same service exposes each agent's expected API path:
+Direct streaming lets one Ray Serve LLM service expose the OpenAI, Anthropic Messages, and OpenAI
+Responses APIs without a separate proxy. Enable it with service-level environment variables in
+[`part1-deploy-naive/service_naive.yaml`](./part1-deploy-naive/service_naive.yaml):
+
+```yaml
+env_vars:
+  RAY_SERVE_ENABLE_HA_PROXY: "1"
+  RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+```
+
+Set these at the **service level**, not in a per-deployment `runtime_env`, so the Ray Serve controller sees
+them during startup. See the [Part 1 README](./part1-deploy-naive/README.md) for details.
+
+With direct streaming enabled, the same service exposes each agent's expected API path:
 
 | Path | Used by |
 |---|---|
@@ -81,17 +94,23 @@ curl -fsS -H "Authorization: Bearer $ANYSCALE_API_KEY" "$ANYSCALE_BASE_URL/model
 You can also run Codex with `./run-codex-direct.sh`. For Cursor, see
 [`part2-connect-clients-direct/cursor-setup.md`](./part2-connect-clients-direct/cursor-setup.md).
 
-## How Direct Streaming Works
+### 5. (Optional) Deploy the optimized service
 
-Direct streaming lets one Ray Serve LLM service expose the OpenAI, Anthropic Messages, and OpenAI
-Responses APIs without a separate proxy. Enable it with service-level environment variables in
-[`part1-deploy-naive/service_naive.yaml`](./part1-deploy-naive/service_naive.yaml):
+The Part 1 deployment uses 4× L4 GPUs. Part 3 optimizes the service for a single **RTX PRO 6000 96 GB** GPU
+with FP8, 256K context, and faster cold starts:
 
-```yaml
-env_vars:
-  RAY_SERVE_ENABLE_HA_PROXY: "1"
-  RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+```bash
+cd ../part3-optimize
+anyscale service deploy -f service_optimized.yaml
 ```
 
-Set these at the **service level**, not in a per-deployment `runtime_env`, so the Ray Serve controller sees
-them during startup. See the [Part 1 README](./part1-deploy-naive/README.md) for details.
+Optimizations include:
+
+- **RunAI Streamer** — loads weights from S3 directly to GPU (~25 s vs ~85 s).
+- **Torch.compile cache** — restores prebuilt caches from S3 (~9 s vs ~74 s).
+- **FP8 KV cache** — halves KV memory so the full 256K context fits.
+- **CUDA graphs** — ~2.87× decode speedup on Blackwell.
+- **Autoscale** — scales 1→4 replicas with round-robin routing.
+
+Then update `../part2-connect-clients-direct/.env`: point `ANYSCALE_BASE_URL` to the new service URL and
+relaunch the clients. See the [`Part 3 README`](./part3-optimize/README.md) for toggle defaults, [`BENCHMARKS.md`](./part3-optimize/BENCHMARKS.md) for measured numbers, and [`NOTES-incompatibilities.md`](./part3-optimize/NOTES-incompatibilities.md) for knobs that can't be combined.
