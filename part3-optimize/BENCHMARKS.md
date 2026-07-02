@@ -6,6 +6,10 @@ Unless noted, results are from 1× RTX PRO 6000 (`g7e.4xlarge`, 96 GB, SM120), T
 (`ray-llm:2.56.0`). Prefix-routing tests used 2× of the same GPU. Anything not yet remeasured on the Pro
 6000 is listed in [TODO](#todo).
 
+Note on context length: the decode/throughput numbers were measured at `max_model_len=81920` with real
+prompts up to ~73K tokens. Per-token rates are largely insensitive to the `max_model_len` cap, but treat the
+production 256K-cap figures as un-benchmarked.
+
 ## Summary
 
 Each row compares one knob off vs on, on the same hardware.
@@ -16,7 +20,7 @@ Each row compares one knob off vs on, on the same hardware.
 | 2 | `ENABLE_COMPILE_CACHE` | Recompile, 74.5 s | Prebuilt cache, 8.8 s | 8.5× faster compile | On |
 | 3 | `ENABLE_FP8_KV_CACHE` | bf16 KV, <256K context | fp8 KV, full 256K | 6.53× concurrency | On |
 | 4 | `ENABLE_CUDA_GRAPHS` | Eager, 15.9 tok/s | Graphs, 45.6 tok/s | 2.87× decode | On |
-| 5 | `ENABLE_SPEC_DECODE` | Base, 46 tok/s | MTP, 86 tok/s | 1.89× decode | Off |
+| 5 | `ENABLE_SPEC_DECODE` | Base, 45.6 tok/s | MTP, 86.4 tok/s | 1.89× decode | Off |
 | 6 | `ENABLE_PREFIX_ROUTING` | Round-robin, 7.79 s TTFT | Prefix, 301 s TTFT | 39× worse | Off |
 | — | Direct streaming | — | Native `/v1/messages` and `/v1/responses` | Required for agent APIs | On |
 
@@ -67,8 +71,11 @@ Verdict: keep on. Turning it off makes each scale-up compile cold.
 | bf16 | <256K | — |
 | fp8 | Full 256K | 6.53× |
 
-Verdict: keep on. NVFP4 KV also fits at about 7× concurrency on Blackwell, but fp8 is higher quality and is
-the default. In vLLM 0.22, valid KV dtypes are `fp8`, `fp8_e4m3`, and `nvfp4`; `mxfp4` is not valid here.
+Verdict: keep on — `fp8` is the right KV dtype here. Do **not** use `nvfp4` for the KV cache on this GPU:
+vLLM accepts the flag, but the FP4 attention kernel is sm_100/sm_103-only (datacenter Blackwell), so on the
+RTX PRO 6000 (SM120) it starts cleanly and then **crashes on the first request**
+([vllm#43562](https://github.com/vllm-project/vllm/issues/43562)). Valid KV dtypes on SM120 are `fp8`
+(= `fp8_e4m3`) and `fp8_e5m2`. (`mxfp4` is a weight-quantization format, not a KV-cache dtype at all.)
 
 ## 4. CUDA Graphs
 
