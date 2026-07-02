@@ -80,7 +80,7 @@ RTX PRO 6000 (SM120) it starts cleanly and then **crashes on the first request**
 
 ## 4. CUDA Graphs
 
-[CUDA graphs](https://docs.ray.io/en/latest/serve/llm/user-guides/deployment-initialization.html#startup-breakdown) are enabled by leaving `enforce_eager` off. On real agent prompts with FP8 and `max_model_len`
+[CUDA graphs](https://docs.vllm.ai/en/latest/design/cuda_graphs/) are enabled by leaving `enforce_eager` off. On real agent prompts with FP8 and `max_model_len`
 81920:
 
 | Config | Decode tok/s |
