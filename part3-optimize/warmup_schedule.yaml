@@ -1,0 +1,18 @@
+# warmup_schedule.yaml — Anyscale scheduled job that runs warmup.sh every weekday morning, so the
+# scale-to-zero service (service_scale_to_zero.yaml) is warm before developers arrive.
+#
+#   anyscale schedule apply -f warmup_schedule.yaml
+#
+# Alternative: if you already have any box with cron (or GitHub Actions), skip this file and
+# schedule warmup.sh there directly — it's a single curl retry loop.
+job_config:
+  name: qwen3-6-27b-warmup
+  working_dir: .
+  entrypoint: bash warmup.sh
+  env_vars:
+    # Same values as part2-connect-clients-direct/.env
+    ANYSCALE_BASE_URL: "https://HOST.s.anyscaleuserdata.com/v1"  # your service URL, ends in /v1
+    ANYSCALE_API_KEY: "<service bearer token>"
+    ANYSCALE_MODEL: "qwen3.6-27b"
+cron_expression: "0 7 * * 1-5"    # 07:00 Monday-Friday
+timezone: "America/Los_Angeles"   # the cron fires in this timezone

@@ -17,7 +17,7 @@ the deployment costs per developer vs sending the same traffic to a commercial L
 | Context | FP8, 128K | FP8, full 256K |
 | Model load | HF download, ~85 s | RunAI Streamer S3→GPU, ~25 s |
 | Compile | Recompile every cold start, ~74 s | S3 torch.compile cache, ~9 s |
-| Scaling | Single replica | Autoscale 1→4, round-robin |
+| Scaling | Single replica | Autoscale 1→4, round-robin (or 0→4 with [`service_scale_to_zero.yaml`](service_scale_to_zero.yaml)) |
 
 Why RTX PRO 6000 + FP8? FP8 weights plus an FP8 256K KV cache fit comfortably on the 96 GB card, with about
 6.5× concurrency at full context and better quality than 4-bit. (Note: `nvfp4` KV cache is not usable on this
@@ -47,7 +47,9 @@ in `service_optimized.yaml` pins the `g7e` node instead.
 ## Files
 
 - `serve_qwen3_6_27b_optimized.py` — optimized app and toggle panel.
-- `service_optimized.yaml` — service config for 1× RTX PRO 6000 with autoscale 1→4.
+- `service_optimized.yaml` — service config for 1× RTX PRO 6000 with autoscale 1→4 (always-on).
+- `service_scale_to_zero.yaml` — same deployment with autoscale 0→4: the GPU terminates when idle.
+- `warmup.sh` / `warmup_schedule.yaml` — weekday-morning warm-up for the scale-to-zero service.
 - `direct_streaming_prefix_router.py` — prefix-routing adapter for direct streaming, only used if you opt in.
 - `Containerfile` — `ray-llm:2.56.0` plus `runai-model-streamer`.
 - [`BENCHMARKS.md`](BENCHMARKS.md) — measured effect of each knob.
@@ -70,5 +72,27 @@ the clients.
 
 Before turning on spec decode or prefix routing, read [`BENCHMARKS.md`](BENCHMARKS.md) and
 [`NOTES-incompatibilities.md`](NOTES-incompatibilities.md). Both are off by default for measured reasons.
+
+## Scale to Zero Outside Work Hours
+
+[`service_scale_to_zero.yaml`](service_scale_to_zero.yaml) is the same deployment with `MIN_REPLICAS=0`
+and `min_nodes: 0`: after 30 idle minutes the replica scales away and the GPU node terminates, so nights
+and weekends cost nothing. At ~10 h/day on weekdays that is ≈ $840/mo vs ≈ $2,900 always-on — the math
+is in [`COST-ESTIMATE.md`](COST-ESTIMATE.md).
+
+```bash
+anyscale service deploy -f service_scale_to_zero.yaml
+```
+
+Then schedule [`warmup.sh`](warmup.sh) for 7 am on weekdays so the first developer never waits out the
+cold start (node provisioning + ~25 s weight load + ~9 s compile restore):
+
+- **Anyscale scheduled job** — fill in the service URL and token in
+  [`warmup_schedule.yaml`](warmup_schedule.yaml), then `anyscale schedule apply -f warmup_schedule.yaml`.
+- **Any other cron** (a dev box, CI) — `0 7 * * 1-5 ANYSCALE_BASE_URL=... ANYSCALE_API_KEY=... warmup.sh`;
+  it is a single curl retry loop.
+
+Trade-off: an off-hours first request (late night, weekend) waits through the cold start — keep a
+commercial API key as the off-hours fallback, or use the always-on `service_optimized.yaml` instead.
 
 ← Back: [Part 2](../part2-connect-clients-direct/README.md) · Overview: [top-level README](../README.md)

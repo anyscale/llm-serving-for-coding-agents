@@ -51,6 +51,8 @@ if ENABLE_SPEC_DECODE and ENABLE_FAST_MODEL_LOADING:
           "(RunAI Streamer conflicts with MTP, vllm#42060); using the HF loader instead.")
     ENABLE_FAST_MODEL_LOADING = False
 
+import os
+
 from ray.serve.llm import LLMConfig, build_openai_app
 
 # ── Fixed for this deployment ────────────────────────────────────────────────
@@ -122,13 +124,18 @@ if ENABLE_COMPILE_CACHE:
 # ── Deployment / autoscaling ─────────────────────────────────────────────────
 deployment_config = dict(
     autoscaling_config=dict(
-        min_replicas=1,            # always-on baseline: no cold start during work hours
+        # 1 (default) = always-on: no cold start during work hours. service_scale_to_zero.yaml sets
+        # MIN_REPLICAS=0 (+ compute min_nodes: 0) so idle nights/weekends cost nothing — pair it with
+        # warmup.sh on a weekday-morning cron (warmup_schedule.yaml); cost math in COST-ESTIMATE.md.
+        min_replicas=int(os.environ.get("MIN_REPLICAS", "1")),
         max_replicas=4,            # scale out for peak; each replica = 1 RTX PRO 6000 node (g7e.4xlarge)
         target_ongoing_requests=8,  # CONSERVATIVE, untested on Pro 6000 — scale out early so the autoscaler
                                     # doesn't pile cold ~73K-tok prefills on one GPU (TTFT/preemption). TODO: measure
                                     # the Pro 6000 capacity cliff (BENCHMARKS "TODO") and tune; raise toward 16 if prompts cache well.
         upscale_delay_s=30,
-        downscale_delay_s=600,
+        # service_scale_to_zero.yaml raises this to 1800 so a lunch-break lull doesn't trigger a
+        # mid-day cold start.
+        downscale_delay_s=int(os.environ.get("DOWNSCALE_DELAY_S", "600")),
     ),
     max_ongoing_requests=64,
 )
