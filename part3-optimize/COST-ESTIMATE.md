@@ -1,189 +1,275 @@
-# Cost estimate — self-hosting vs paying per token
+# Cost estimate: self-hosting vs paying per token
 
-A simple, reproducible **estimate** (±2×, not exact accounting) of what the Part 3 service costs per
-developer per month, compared with sending the same agent traffic to a commercial LLM API at
-per-token rates. All prices are rounded list prices (July 2026).
+This page answers one question:
 
-**TL;DR:** the same usage costs **≈ $150/dev-month** at typical frontier API token rates (with
-prompt-cache reads, writes, and expiry modeled) vs **≈ $30/dev-month** self-hosted on an always-on
-RTX PRO 6000 (`g7e.4xlarge`, ≈ $2,900/mo, ~100 developers/GPU) — or **≈ $8/dev-month** with
-scale-to-zero outside work hours (GPU up ~10 h/day on weekdays, ≈ $840/mo). Spot instances
-(≈ $2.3/hr, −43%) cut those to **≈ $17** and **≈ $5**. Always-on breaks even at ≈ 15–30
-developers (spot ~11); work-hours mode at ≈ 5–10 (spot ~3) — subject to the model-quality caveat
-below. Measured real-world heavy usage runs far higher — Pylon reported **≈ $780/dev-month** at
-API rates — and at that intensity self-hosting breaks even at **~4 developers**.
+> If a team uses the Part 3 coding-agent service, is it cheaper to run the model ourselves or send
+> the same traffic to a commercial LLM API?
 
-## Self-hosted side — three numbers
+This is a planning estimate, not exact accounting. Treat every number as ±2×. Prices are rounded
+list prices from July 2026.
 
+## Short Answer
+
+Commercial pricing comes in two scenarios, and the comparison should be made against both:
+
+1. **Scenario 1 — Subscription seats, ≈ $200/dev-month.** A Claude Max 20x or Cursor Ultra seat
+   caps an individual heavy user at about $200/month, with usage limits attached.
+2. **Scenario 2 — Token-metered billing, ≈ $800/dev-month.** When usage bills per token
+   (API keys, or enterprise tiers past the seat cliff), real coding-agent bills land near
+   $800/dev-month for active engineers — Pylon measured ≈ $780.
+
+The same traffic on a self-hosted RTX PRO 6000 GPU:
+
+| Mode | GPU cost | Cost per developer | Break-even vs $200 seat | Break-even vs $800 tokens |
+|---|---:|---:|---:|---:|
+| Always-on, on-demand | ≈ $2,900/mo | **≈ $30/mo** | ~15 developers | ~4 developers |
+| Always-on, spot | ≈ $1,700/mo | **≈ $17/mo** | ~9 developers | ~2 developers |
+| Work-hours, on-demand | ≈ $840/mo | **≈ $8/mo** | ~4 developers | ~1 developer |
+| Work-hours, spot | ≈ $480/mo | **≈ $5/mo** | ~3 developers | **even 1 developer** |
+
+Read it this way: against the *friendliest* commercial case — the $200 capped seat — self-hosting
+wins above roughly 3–15 developers depending on mode. Against token-metered billing, the case is
+much stronger: one GPU costs less than four token-metered developers even always-on, and in
+work-hours + spot mode the GPU is cheaper than a *single* heavy developer's token bill.
+
+The biggest caveat is model quality: a cheaper 27B model only saves money if it completes the same
+work with an acceptable number of extra turns.
+
+## What This Estimate Assumes
+
+The self-hosted side uses the optimized Part 3 service on one `g7e.4xlarge` instance with an RTX PRO
+6000 GPU. The API side prices the same coding-agent traffic at typical frontier-model token rates.
+
+| Input | Planning value | Why it matters |
+|---|---:|---|
+| GPU price, on-demand | ≈ $4.00/hr | About $2,900/month if always on |
+| GPU price, spot | ≈ $2.27/hr | About 43% cheaper than on-demand |
+| Active sessions per GPU | ≈ 24 | Measured from 48 replayed Claude Code sessions on 2 replicas |
+| Developer duty cycle | ≈ 25% | Agent traffic is bursty: stream, read, edit, repeat |
+| API cost per turn | ≈ $0.05 | Blends warm cached turns and cold cache rewrites |
+| Turns per developer | ≈ 2,000-4,000/month | About 2-4 active agent hours/day, 21 workdays/month |
+
+The most important assumption is duty cycle. A developer does not stream tokens continuously all
+day. They send a request, wait 10-30 seconds, then spend minutes reading, editing, testing, or
+thinking. That burstiness lets one GPU serve far more developers than its raw concurrent-session
+count.
+
+## Self-Hosted Cost
+
+The self-hosted formula is:
+
+```text
+$/dev-month = monthly GPU cost / developers supported per GPU
+
+developers supported per GPU = concurrent active sessions / duty cycle
 ```
-$/dev-month  =  monthly GPU cost  ÷  developers supported per GPU
-             =  (GPU $/hr × 730)  ÷  (concurrent sessions per GPU ÷ duty cycle)
+
+With 24 active sessions per GPU:
+
+| Duty cycle | What it means | Developers per GPU | Always-on cost/dev |
+|---|---|---:|---:|
+| 100% | Everyone streams nonstop | 24 | $120/mo |
+| 50% | Very heavy usage | 48 | $60/mo |
+| 25% | Planning number | ~100 | $30/mo |
+| 10% | Light or mixed workday | ~240 | $12/mo |
+
+So the default planning number is:
+
+```text
+$2,900/month per always-on GPU / ~100 developers = ~$30/dev-month
 ```
 
-| # | Input | Value | Source |
-|---|---|---|---|
-| 1 | GPU price (`g7e.4xlarge`, us-west-2) | **≈ $4/hr on-demand · ≈ $2.3/hr spot (−43%)** | AWS list/spot price |
-| 2 | Concurrent Claude Code sessions per GPU | **≈ 24** | measured: 48 replayed sessions on 2 replicas at TTFT mean 7.8 s / p95 14 s ([`BENCHMARKS.md`](BENCHMARKS.md) §6, round-robin row) |
-| 3 | Duty cycle — fraction of the workday one developer's session has a request in flight | **≈ 25%** planning number (10–40% range) | session-trace timestamps: ~35–40% in flight during active bursts; a full workday averages lower |
+## Work-Hours Scale-to-Zero
 
-Agent traffic is bursty — the model streams for 10–30 s, then the developer reads and edits for
-minutes — so one GPU serves far more developers than its 24 concurrent slots:
+If developers mostly use the service during the workday, the GPU does not need to run overnight or
+on weekends. The scale-to-zero setup uses:
 
-| Duty cycle | Devs per GPU | ≈ $/dev-month |
-|---|---|---|
-| 100% (everyone streaming nonstop — worst case) | 24 | $120 |
-| 50% | 48 | $60 |
-| **25% (planning number)** | **~100** | **$30** |
-| 10% (typical mixed workday) | ~240 | $12 |
+- [`scale-to-zero/service_scale_to_zero.yaml`](scale-to-zero/service_scale_to_zero.yaml), with
+  `MIN_REPLICAS=0` and `min_nodes: 0`.
+- [`scale-to-zero/warmup.sh`](scale-to-zero/warmup.sh), scheduled around 7 am on weekdays.
+- [`scale-to-zero/warmup_schedule.yaml`](scale-to-zero/warmup_schedule.yaml), applied with
+  `anyscale schedule apply`, or any external cron runner.
 
-### Cheaper still: scale to zero outside work hours
+The planning math:
 
-Developers only use the agent during the workday, so don't pay for the GPU overnight or on
-weekends: deploy [`scale-to-zero/service_scale_to_zero.yaml`](scale-to-zero/service_scale_to_zero.yaml)
-(same deployment with `MIN_REPLICAS=0` + `min_nodes: 0`) and schedule
-[`scale-to-zero/warmup.sh`](scale-to-zero/warmup.sh) at 7 am on weekdays — either as an Anyscale
-scheduled job ([`warmup_schedule.yaml`](scale-to-zero/warmup_schedule.yaml), applied with
-`anyscale schedule apply`) or from any box with cron — so the first developer of the day never
-sees a cold start. Setup details in the [README](README.md#scale-to-zero-outside-work-hours).
-
-```
-10 h/day × 21 weekdays ≈ 210 GPU-hours/month × $4/hr ≈ $840/mo   (vs $2,900 always-on)
-÷ ~100 devs/GPU  ≈  $8/dev-month
+```text
+10 hours/day * 21 weekdays = ~210 GPU-hours/month
+~210 GPU-hours * $4/hr = ~$840/month
+~$840/month / ~100 developers = ~$8/dev-month
 ```
 
-What scale-to-zero costs you in exchange:
+That is the target cost, but scale-to-zero has operational trade-offs:
 
-- **Cold starts.** Scaling from zero waits for node provisioning plus startup. Measured
-  (2026-07-06): **≈ 100 s** to wake when the node is still up (engine restart with the fast-start
-  work), **≈ 6 min** end-to-end when a node must be provisioned. The waking request itself can
-  hang without ever getting a response — clients must retry, which is why `warmup.sh` is a retry
-  loop rather than a single ping.
-- **Off-hours users** (late night, weekends) hit that cold start on their first request, or you
-  keep a commercial API key as the off-hours fallback.
-- 10 h/day is an assumption; actual billing follows real traffic plus the scale-down delay.
+- **Cold starts:** measured on 2026-07-06 at ≈ 100 seconds when the node is still up, and ≈ 6
+  minutes when a new node must be provisioned.
+- **Retry behavior:** the first waking request can hang without a useful response, so `warmup.sh`
+  retries instead of sending one ping.
+- **Off-hours usage:** late-night and weekend users either wait through the cold start or fall back
+  to a commercial API.
+- **Billing reality:** actual cost depends on real traffic and the scale-down delay, not just the
+  10-hour planning assumption.
 
-> **⚠ Validation status (2026-07-06):** replica scale-to-zero is confirmed working, but in our
-> live test the **GPU node itself never terminated** — the app's CPU router deployment can land
-> on the only worker type (the GPU node) and pin it, so billing continued as if always-on. Until
-> the router is placed on the head node or a small CPU worker pool, treat the work-hours dollar
-> figures as the *target*, not a given: after enabling this mode, verify on the cluster's nodes
-> page that the `g7e` instance actually terminates after ~35 idle minutes.
+> **Validation status (2026-07-06):** replica scale-to-zero is confirmed working, but in our live
+> test the **GPU node itself never terminated**. The app's CPU router deployment can land on the
+> only worker type, which is the GPU node, and keep it alive. Until the router runs on the head node
+> or a small CPU worker pool, treat work-hours cost as the target, not a guarantee. After enabling
+> this mode, check the cluster nodes page and confirm the `g7e` instance terminates after about 35
+> idle minutes.
 
-### On-demand vs spot
+## Spot Instances
 
-Anyscale schedules workers on spot with on-demand fallback (`market_type: PREFER_SPOT` in the
-compute config, ideally with cross-zone scaling for availability). At us-west-2 rates
-($4.00 on-demand / $2.27 spot per hour), the four self-hosted modes at the ~100 devs/GPU planning
-number:
+Spot cuts GPU cost from about **$4.00/hr** to **$2.27/hr** in `us-west-2`, or about 43% cheaper.
+The Part 3 config uses spot with on-demand fallback via `market_type: PREFER_SPOT`; cross-zone
+scaling improves availability.
 
-| Mode | GPU $/hr | ≈ GPU $/mo | ≈ $/dev-mo | Break-even vs API ≈ $150 |
-|---|---|---|---|---|
-| Always-on, on-demand | $4.00 | $2,900 | $30 | ~20 devs |
-| Always-on, spot | $2.27 | $1,700 | $17 | ~11 devs |
-| Work-hours, on-demand | $4.00 | $840 | $8 | ~6 devs |
-| **Work-hours, spot** | **$2.27** | **$480** | **$5** | **~3 devs** |
+The trade-off is interruption. Spot instances can be preempted with a 2-minute warning. The service
+then restarts the replica on a fresh node. With the Part 3 fast-start work, recovery is on the order
+of the measured ~3-minute cold start. Because `PREFER_SPOT` falls back to on-demand when spot
+capacity is tight, the main cost is latency, not full unavailability.
 
-Spot's trade-off: instances can be preempted with a 2-minute warning, and the service then
-restarts the replica on a fresh node — with the Part 3 fast-start work that recovery is on the
-order of the measured ~3-minute cold start. `PREFER_SPOT` falls back to on-demand when spot
-capacity is tight, so preemption costs you minutes of latency, not availability.
+## API Cost
 
-## API side — the same traffic, priced per token
+The API comparison prices the same coding-agent traffic by token. In the measured workload
+([`BENCHMARKS.md`](BENCHMARKS.md)), each agent turn re-sends the whole conversation:
 
-Coding agents are billed by tokens, so the fair comparison is the API bill for the **same usage
-profile** the GPU serves. From the measured workload (Claude Code session replays,
-[`BENCHMARKS.md`](BENCHMARKS.md)): each agent turn re-sends the whole conversation — roughly 70K
-input tokens, of which all but a few thousand are repeated context that APIs bill at cached rates —
-and produces a short output.
+- About **70K input tokens** per turn.
+- Most of those tokens are repeated context.
+- Output is short, about **150 tokens** per turn.
 
-Cache mechanics matter more than list $/MTok. At typical frontier-model rates (≈ $3/MTok base
-input, ≈ $15/MTok output), cache **reads** are 0.1× base but cache **writes** are 1.25× base, and
-the cache expires after ~5 idle minutes. So there are two kinds of turns:
+Prompt caching helps, but it does not make repeated context free. At typical frontier-model rates:
 
-**Warm turn** — the previous turn was < 5 min ago, so the whole history is a cache hit and only
-the new tokens are written:
+- Base input: ≈ $3/MTok.
+- Output: ≈ $15/MTok.
+- Cache reads: 0.1× base input, or ≈ $0.30/MTok.
+- Cache writes: 1.25× base input, or ≈ $3.75/MTok.
+- Cache expiry: about 5 idle minutes.
 
-| Component | Tokens/turn | Rate | ≈ $/turn |
-|---|---|---|---|
-| Context re-read (cache hit, 0.1×) | ~66K | $0.30/MTok | $0.020 |
-| New input (cache write, 1.25×) | ~4K | $3.75/MTok | $0.015 |
+That creates two turn types.
+
+**Warm turn:** the previous turn was less than 5 minutes ago, so most context is a cache hit.
+
+| Component | Tokens/turn | Rate | Cost/turn |
+|---|---:|---:|---:|
+| Context re-read | ~66K | $0.30/MTok | $0.020 |
+| New input cache write | ~4K | $3.75/MTok | $0.015 |
 | Output | ~150 | $15/MTok | $0.002 |
 | **Warm total** | ~70K | | **≈ $0.04** |
 
-**Cold turn** — the first turn of a session, or any turn after a > 5-minute pause: the entire
-~70K context is **re-written** to the cache at 1.25× → ~70K × $3.75/MTok ≈ **$0.26** — about 7×
-a warm turn. Agent use is bursty, so pauses happen: with roughly 1 cold turn per 10–20 (session
-starts, coffee breaks, meetings), the blended average is **≈ $0.05/turn**.
+**Cold turn:** the first turn of a session, or any turn after a pause longer than ~5 minutes, writes
+the full ~70K-token context back into the cache:
 
-A moderately active agent developer runs ≈ 50 turns per active hour (that pace is what produces the
-measured 35–40% in-flight burst duty at ~23 s per turn) for ~2–4 hours a day:
-
-```
-~50 turns/hr × 2–4 hr/day × 21 days ≈ 2,000–4,000 turns/month
-× $0.05/turn ≈ $100–200/dev-month   →  planning number ≈ $150
+```text
+~70K tokens * $3.75/MTok = ~$0.26
 ```
 
-That is ~150–300 MTok of context re-reads and re-writes per developer per month. Rates above are
-Sonnet-class; an Opus-class model ($5/$25) scales the API column ≈ 1.7×, a top-tier model
-($10/$50) ≈ 3.3×. The self-hosted side is immune to all of this: vLLM's prefix cache costs nothing
-per hit or write, and KV blocks are evicted only under memory pressure, not on a 5-minute clock.
+That is about 7× more expensive than a warm turn. With roughly 1 cold turn per 10-20 turns, the
+blended estimate is **≈ $0.05/turn**.
 
-**Real-world anchor.** Pylon, a ~150-engineer startup, [reported](https://x.com/marty_kausas/status/2064739372625232068)
-a $400K/yr Anthropic bill on seats (**≈ $220/dev-month**) about to jump to $1.4M/yr
-(**≈ $780/dev-month**) because crossing 150 seats forces the Enterprise tier, where every token
-bills at standard API rates. Our ≈ $150 is a bottom-up *moderate-usage* number; measured
-startup-wide usage — parallel sessions, background agents, all-day runs — lands **1.5–5× higher**.
+Monthly API cost for a moderately active developer:
 
-## Comparison by team size
+```text
+~50 turns/hour * 2-4 active hours/day * 21 days = ~2,000-4,000 turns/month
+~2,000-4,000 turns * $0.05/turn = ~$100-200/dev-month
+planning number = ~$150/dev-month
+```
 
-Self-hosted at the 25% planning number (~100 devs/GPU, GPUs added as `ceil(devs / 100)`), API at
-the ≈ $150/dev-month planning number. Rows are on-demand — multiply the self-hosted columns by
-≈ 0.57 for spot:
+That is roughly 150-300 MTok of context reads and writes per developer per month. Opus-class rates
+($5/$25) raise the API column by about 1.7×. Top-tier rates ($10/$50) raise it by about 3.3×.
 
-| Team size | GPUs | Always-on ≈ $/dev-mo | Work-hours ≈ $/dev-mo | API ≈ $/dev-mo |
-|---|---|---|---|---|
-| 10 | 1 | $290 | $84 | $150 |
-| 25 | 1 | $115 | $34 | $150 |
-| 50 | 1 | $60 | $17 | $150 |
-| 100 | 1 | $30 | $8 | $150 |
-| 250 | 3 | $35 | $10 | $150 |
+This bottom-up ~$150 is the *moderate-usage floor* of Scenario 2. It sits just under the $200
+subscription cap — which is why the seats are priced where they are — and measured heavy usage
+(higher turn volume, pricier models, parallel agents) lands near the ~$800 Scenario 2 planning
+number.
 
-**Rules of thumb: one always-on GPU ≈ $2,900/mo ≈ the API bill of ~20 moderately active agent
-developers. With scale-to-zero work-hours mode (≈ $840/mo), the break-even drops to ~5–10
-developers.**
+Self-hosting avoids this cache-expiry cost structure: vLLM prefix-cache hits and writes are not
+billed per token, and KV blocks are evicted under memory pressure rather than after a 5-minute idle
+timer.
 
-**Heavy-usage scenario (Pylon-anchored).** Model both sides consistently: all-day agent use pushes
-the duty cycle toward 100%, so one GPU supports only its ~24 concurrent slots — self-hosted rises
-to ≈ $120/dev-month always-on (≈ $35 in work-hours mode) while the measured API bill for that
-cohort is ≈ $780/dev-month. Break-even falls to **~4 developers** (always-on) and self-hosting
-runs ~6–20× cheaper at scale. One honest counterweight: heavy users may be heavy precisely
-because they lean on frontier-model quality, which is where the 27B quality gap bites hardest.
+## Team-Size Comparison
 
-*(For reference, subscription seats cap the API bill at flat rates — Cursor Pro/Pro+/Ultra
-$20/$60/$200, Claude Pro/Max $20/$100/$200 per dev-month. The $100–200 seats bracket the ≈ $150
-API planning number, so the break-even barely moves if seats are on the table. The cap has a
-cliff, though: past 150 seats Anthropic's Enterprise tier stops including usage and bills every
-token at standard API rates — the 3.5×-overnight jump Pylon hit.)*
+This table uses the 25% duty-cycle planning number: about 100 developers per GPU, with GPUs added as
+`ceil(developers / 100)`. The two commercial columns are the flat scenario prices. Self-hosted rows
+are on-demand; multiply by about 0.57 for spot.
+
+| Team size | GPUs | Always-on self-hosted | Work-hours self-hosted | Scenario 1: $200 seat | Scenario 2: $800 tokens |
+|---|---:|---:|---:|---:|---:|
+| 10 | 1 | $290/dev-mo | $84/dev-mo | $200/dev-mo | $800/dev-mo |
+| 25 | 1 | $115/dev-mo | $34/dev-mo | $200/dev-mo | $800/dev-mo |
+| 50 | 1 | $60/dev-mo | $17/dev-mo | $200/dev-mo | $800/dev-mo |
+| 100 | 1 | $30/dev-mo | $8/dev-mo | $200/dev-mo | $800/dev-mo |
+| 250 | 3 | $35/dev-mo | $10/dev-mo | $200/dev-mo | $800/dev-mo |
+
+The monthly totals make the incentive concrete. At 100 developers:
+
+- Scenario 1 (subscriptions): 100 × $200 = **$20K/month**.
+- Scenario 2 (token-metered): 100 × $800 = **$80K/month**.
+- Self-hosted: **$2.9K/month** always-on, **$840/month** work-hours — roughly **7-95× cheaper**.
+
+Rules of thumb:
+
+- One always-on GPU costs about **$2,900/month** — roughly **15** subscription seats, or the token
+  bill of just **~4** heavy developers.
+- Work-hours mode costs about **$840/month** — about **4** seats, or ~1 token-metered developer.
+- Spot lowers the self-hosted side by about **43%**.
+
+## Scenario 1: Subscription Seats (≈ $200/dev-month)
+
+Subscription seats can cap individual spend at flat monthly rates:
+
+- Cursor Pro/Pro+/Ultra: $20/$60/$200 per developer per month.
+- Claude Pro/Max: $20/$100/$200 per developer per month.
+
+The $200 tiers (Max 20x, Cursor Ultra) are the realistic planning number for engineers who use
+coding agents seriously — the cheaper tiers rate-limit heavy agent use. Those tiers sit just above
+the ~$150 token-metered estimate for a moderate user, so for individuals the seat is competitive.
+
+Two limits make this the *best case* for the commercial side, not the default:
+
+- **Usage caps.** Seats include limited usage; sustained heavy use hits the plan limits.
+- **The enterprise cliff.** After 150 seats, Anthropic's Enterprise tier stops acting like a flat
+  cap and moves usage much closer to standard token-metered billing — which turns Scenario 1 into
+  Scenario 2 overnight, the jump Pylon reported.
+
+## Scenario 2: Token-Metered Billing (≈ $800/dev-month)
+
+Pylon, a ~150-engineer startup, [reported](https://x.com/marty_kausas/status/2064739372625232068)
+a $400K/year Anthropic bill on seats, or about **$220/dev-month**, that was about to jump to
+$1.4M/year, or about **$780/dev-month**. Marty Kausas also reported burning thousands of dollars in
+a few days himself, with top support reps around **$800/month** each. The jump happened because
+crossing 150 seats moved them to an Enterprise tier where usage is billed much closer to standard
+API/token-metered rates.
+
+For heavy users, model both sides consistently:
+
+- API cost can rise from the moderate **~$150/dev-month** estimate to **~$800/dev-month**.
+- Self-hosted duty cycle also rises toward 100%, so one GPU supports closer to its raw **~24 active
+  sessions**, not ~100 developers.
+- Self-hosted cost rises to about **$120/dev-month** always-on, or about **$35/dev-month** in
+  work-hours mode.
+
+Even with that higher self-hosted cost, break-even falls to about **4 developers**, and self-hosting
+can be roughly **6-20× cheaper** at scale. This is the scenario where self-hosting on Anyscale is
+most compelling. The honest counterweight is that heavy users may rely more on frontier-model
+quality, where the 27B model gap matters most.
 
 ## Caveats
 
-- **Quality gap:** a 27B model vs a frontier model — cheaper per token isn't automatically cheaper
-  per task if it takes more iterations to finish the same work.
-- The softest API-side assumption is the cold-turn share (1 in 10–20): every pause longer than the
-  ~5-minute cache TTL adds a ~$0.26 full-context re-write, so choppier usage raises the API bill.
-  Providers with different cache multipliers (reads ≠ 0.1×, writes ≠ 1.25×) shift the math
-  proportionally.
-- These are rounded list prices and usage estimates; treat every number as ±2×.
-- [`service_optimized.yaml`](service_optimized.yaml) autoscales 1→4 (always-on conservative case);
-  the work-hours numbers use the shipped [`scale-to-zero/`](scale-to-zero/) config plus the
-  `warmup.sh` cron.
-- Spot prices float (the $2.27 is a us-west-2 snapshot) and preemptions interrupt in-flight
-  requests for ~3 minutes. `g7e` on-demand capacity can also be tight in a single AZ —
-  `PREFER_SPOT` plus cross-zone scaling has been the reliable combination in practice.
-- To tighten the numbers for your org, capture one real workday of agent traffic and count turns,
-  tokens per turn, and `Σ(request wall time) / session wall time` — no GPU needed.
+- **Quality gap:** this compares a 27B self-hosted model with frontier APIs. Cheaper tokens are not
+  cheaper work if the model needs many more attempts to finish the same task.
+- **Cache assumptions:** the API estimate is sensitive to cold-turn frequency. Every pause longer
+  than the ~5-minute cache TTL adds a ~$0.26 full-context cache rewrite.
+- **Provider pricing:** different cache-read, cache-write, input, and output multipliers shift the
+  API math proportionally.
+- **Scale-to-zero validation:** [`service_optimized.yaml`](service_optimized.yaml) is the
+  conservative always-on config. Work-hours numbers depend on the shipped
+  [`scale-to-zero/`](scale-to-zero/) config, `warmup.sh`, and the GPU node actually terminating.
+- **Spot availability:** spot prices float, and preemptions interrupt in-flight requests for a few
+  minutes. `g7e` on-demand capacity can also be tight in a single AZ, so `PREFER_SPOT` plus
+  cross-zone scaling has been the reliable combination in practice.
+- **Org-specific usage:** to tighten the estimate, capture one real workday of agent traffic and
+  count turns, tokens per turn, and `sum(request wall time) / session wall time`.
 
-## Pricing sources
+## Pricing Sources
 
 [AWS G7e announcement](https://aws.amazon.com/blogs/aws/announcing-amazon-ec2-g7e-instances-accelerated-by-nvidia-rtx-pro-6000-blackwell-server-edition-gpus/) ·
 [g7e.4xlarge pricing](https://www.devzero.io/instances/aws/g7e.4xlarge) ·
