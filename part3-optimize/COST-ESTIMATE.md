@@ -46,6 +46,10 @@ The self-hosted side uses the optimized Part 3 service on one `g7e.4xlarge` inst
 | GPU price, spot | ≈ $2.27/hr | About 43% cheaper than on-demand |
 | Active sessions per GPU | ≈ 24 | Measured from 48 replayed Claude Code sessions on 2 replicas |
 | Developer duty cycle | ≈ 25% | Agent traffic is bursty: stream, read, edit, repeat |
+| Input tokens per turn | ≈ 70K | Measured: each turn re-sends the whole session history |
+| — repeated context in that | ≈ 66K | System prompt + tool schemas (~57K) + prior turns; cached |
+| — new tokens per turn | ≈ 4K | The latest user message / tool result increment |
+| Output tokens per turn | ≈ 150 | Measured range 60-209; agent turns are short answers or tool calls |
 | API cost per turn | ≈ $0.05 | Blends warm cached turns and cold cache rewrites |
 | Turns per developer | ≈ 2,000-4,000/month | About 2-4 active agent hours/day, 21 workdays/month |
 
@@ -53,6 +57,25 @@ The most important assumption is duty cycle. A developer does not stream tokens 
 day. They send a request, wait 10-30 seconds, then spend minutes reading, editing, testing, or
 thinking. That burstiness lets one GPU serve far more developers than its raw concurrent-session
 count.
+
+### Where the Token Numbers Come From
+
+The token lengths are measured, not guessed, from real Claude Code sessions captured through a
+local API proxy and replayed against the service:
+
+- **Server side:** replaying the sessions through vLLM measured a median prompt of ≈ 69.7K tokens
+  and a max of ≈ 81K ([`BENCHMARKS.md`](BENCHMARKS.md)). A Claude Code request is dominated by a
+  byte-identical ~57K-token prefix (system prompt + ~147 tool schemas), with conversation history
+  on top.
+- **Client side:** the captured API responses include per-turn `usage` accounting, and it shows the
+  same shape. A session's *first* turn cache-writes the full context (30K-105K tokens across the
+  captured sessions, depending on how much history had accumulated). Every *later* turn cache-reads
+  that context back and writes only a ~2.5K-token increment, with single-digit uncached input
+  tokens and 43-188 output tokens.
+- **Per session:** context length grows toward the 70-80K range once the tool schemas and a few
+  turns of history render, which is why ≈ 70K input / ≈ 150 output per turn is the planning
+  average. Early turns in a fresh session are cheaper (~30K); long sessions approach the 81K max
+  we measured.
 
 ## Self-Hosted Cost
 
