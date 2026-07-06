@@ -39,9 +39,10 @@ minutes — so one GPU serves far more developers than its 24 concurrent slots:
 ### Cheaper still: scale to zero outside work hours
 
 Developers only use the agent during the workday, so don't pay for the GPU overnight or on
-weekends: deploy [`service_scale_to_zero.yaml`](service_scale_to_zero.yaml) (same deployment with
-`MIN_REPLICAS=0` + `min_nodes: 0`) and schedule [`warmup.sh`](warmup.sh) at 7 am on weekdays —
-either as an Anyscale scheduled job ([`warmup_schedule.yaml`](warmup_schedule.yaml), applied with
+weekends: deploy [`scale-to-zero/service_scale_to_zero.yaml`](scale-to-zero/service_scale_to_zero.yaml)
+(same deployment with `MIN_REPLICAS=0` + `min_nodes: 0`) and schedule
+[`scale-to-zero/warmup.sh`](scale-to-zero/warmup.sh) at 7 am on weekdays — either as an Anyscale
+scheduled job ([`warmup_schedule.yaml`](scale-to-zero/warmup_schedule.yaml), applied with
 `anyscale schedule apply`) or from any box with cron — so the first developer of the day never
 sees a cold start. Setup details in the [README](README.md#scale-to-zero-outside-work-hours).
 
@@ -174,8 +175,8 @@ token at standard API rates — the 3.5×-overnight jump Pylon hit.)*
   proportionally.
 - These are rounded list prices and usage estimates; treat every number as ±2×.
 - [`service_optimized.yaml`](service_optimized.yaml) autoscales 1→4 (always-on conservative case);
-  the work-hours numbers use the shipped [`service_scale_to_zero.yaml`](service_scale_to_zero.yaml)
-  plus the [`warmup.sh`](warmup.sh) cron.
+  the work-hours numbers use the shipped [`scale-to-zero/`](scale-to-zero/) config plus the
+  `warmup.sh` cron.
 - Spot prices float (the $2.27 is a us-west-2 snapshot) and preemptions interrupt in-flight
   requests for ~3 minutes. `g7e` on-demand capacity can also be tight in a single AZ —
   `PREFER_SPOT` plus cross-zone scaling has been the reliable combination in practice.

@@ -111,8 +111,8 @@ Optimizations include:
 - **FP8 KV cache** — halves KV memory so the full 256K context fits.
 - **CUDA graphs** — ~2.87× decode speedup on Blackwell.
 - **Autoscale** — scales 1→4 replicas with round-robin routing.
-- **Scale-to-zero variant** — [`service_scale_to_zero.yaml`](./part3-optimize/service_scale_to_zero.yaml)
-  + a weekday warm-up cron ([`warmup.sh`](./part3-optimize/warmup.sh)) cuts the bill another ~70%.
+- **Scale-to-zero variant** — [`part3-optimize/scale-to-zero/`](./part3-optimize/scale-to-zero/)
+  (service config + weekday warm-up cron) cuts the bill another ~70%.
 
 Then update `../part2-connect-clients-direct/.env`: point `ANYSCALE_BASE_URL` to the new service URL and
 relaunch the clients. See the [`Part 3 README`](./part3-optimize/README.md) for toggle defaults, [`BENCHMARKS.md`](./part3-optimize/BENCHMARKS.md) for measured numbers, and [`NOTES-incompatibilities.md`](./part3-optimize/NOTES-incompatibilities.md) for knobs that can't be combined.
