@@ -9,6 +9,8 @@ prompt-cache reads, writes, and expiry modeled) vs **≈ $30/dev-month** self-ho
 RTX PRO 6000 (`g7e.4xlarge`, ≈ $2,900/mo, ~100 developers/GPU) — or **≈ $8/dev-month** with
 scale-to-zero outside work hours (GPU up ~10 h/day on weekdays, ≈ $840/mo). Always-on breaks even
 at ≈ 15–30 developers; work-hours mode at ≈ 5–10 — subject to the model-quality caveat below.
+Measured real-world heavy usage runs far higher — Pylon reported **≈ $780/dev-month** at API
+rates — and at that intensity self-hosting breaks even at **~4 developers**.
 
 ## Self-hosted side — three numbers
 
@@ -97,6 +99,12 @@ Sonnet-class; an Opus-class model ($5/$25) scales the API column ≈ 1.7×, a to
 ($10/$50) ≈ 3.3×. The self-hosted side is immune to all of this: vLLM's prefix cache costs nothing
 per hit or write, and KV blocks are evicted only under memory pressure, not on a 5-minute clock.
 
+**Real-world anchor.** Pylon, a ~150-engineer startup, [reported](https://x.com/marty_kausas/status/2064739372625232068)
+a $400K/yr Anthropic bill on seats (**≈ $220/dev-month**) about to jump to $1.4M/yr
+(**≈ $780/dev-month**) because crossing 150 seats forces the Enterprise tier, where every token
+bills at standard API rates. Our ≈ $150 is a bottom-up *moderate-usage* number; measured
+startup-wide usage — parallel sessions, background agents, all-day runs — lands **1.5–5× higher**.
+
 ## Comparison by team size
 
 Self-hosted at the 25% planning number (~100 devs/GPU, GPUs added as `ceil(devs / 100)`), API at
@@ -114,9 +122,18 @@ the ≈ $150/dev-month planning number:
 developers. With scale-to-zero work-hours mode (≈ $840/mo), the break-even drops to ~5–10
 developers.**
 
+**Heavy-usage scenario (Pylon-anchored).** Model both sides consistently: all-day agent use pushes
+the duty cycle toward 100%, so one GPU supports only its ~24 concurrent slots — self-hosted rises
+to ≈ $120/dev-month always-on (≈ $35 in work-hours mode) while the measured API bill for that
+cohort is ≈ $780/dev-month. Break-even falls to **~4 developers** (always-on) and self-hosting
+runs ~6–20× cheaper at scale. One honest counterweight: heavy users may be heavy precisely
+because they lean on frontier-model quality, which is where the 27B quality gap bites hardest.
+
 *(For reference, subscription seats cap the API bill at flat rates — Cursor Pro/Pro+/Ultra
 $20/$60/$200, Claude Pro/Max $20/$100/$200 per dev-month. The $100–200 seats bracket the ≈ $150
-API planning number, so the break-even barely moves if seats are on the table.)*
+API planning number, so the break-even barely moves if seats are on the table. The cap has a
+cliff, though: past 150 seats Anthropic's Enterprise tier stops including usage and bills every
+token at standard API rates — the 3.5×-overnight jump Pylon hit.)*
 
 ## Caveats
 
@@ -140,6 +157,7 @@ API planning number, so the break-even barely moves if seats are on the table.)*
 [g7e.4xlarge pricing](https://www.devzero.io/instances/aws/g7e.4xlarge) ·
 [Claude API pricing](https://claude.com/pricing) ·
 [OpenAI API pricing](https://openai.com/api/pricing/) ·
-[Cursor pricing](https://cursor.com/pricing)
+[Cursor pricing](https://cursor.com/pricing) ·
+[Pylon's seat-cliff post (X, 2026)](https://x.com/marty_kausas/status/2064739372625232068)
 
 ← Back: [Part 3 README](README.md) · Benchmarks: [`BENCHMARKS.md`](BENCHMARKS.md) · Overview: [top-level README](../README.md)

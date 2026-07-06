@@ -123,6 +123,7 @@ Rule of thumb: one RTX PRO 6000 serves ~100 developers with realistic agent usag
 **≈ $30/dev-month** always-on (≈ $2,900/mo), or **≈ $8/dev-month** with scale-to-zero outside work
 hours (≈ $840/mo, warm-up cron at 7 am on weekdays) — vs **≈ $150/dev-month** for the same traffic
 at typical frontier API token rates with prompt-cache reads, writes, and expiry modeled.
-Break-even: ~15–30 developers always-on, ~5–10 with work-hours mode. See
+Break-even: ~15–30 developers always-on, ~5–10 with work-hours mode — and ~4 at measured
+real-world heavy usage (Pylon reported ≈ $780/dev-month at API rates). See
 [`part3-optimize/COST-ESTIMATE.md`](./part3-optimize/COST-ESTIMATE.md) for the token math and the
 team-size comparison.
