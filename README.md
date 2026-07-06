@@ -118,7 +118,7 @@ relaunch the clients. See the [`Part 3 README`](./part3-optimize/README.md) for 
 ## What Does It Cost?
 
 Rule of thumb: one always-on RTX PRO 6000 (≈ $2,900/mo) serves ~100 developers with realistic agent
-usage → **≈ $30/dev-month**, vs $20–200/dev-month for commercial seats. Seats win below ~25–30
-developers; self-hosting wins above. See
-[`part3-optimize/COST-ESTIMATE.md`](./part3-optimize/COST-ESTIMATE.md) for the 3-number model and the
+usage → **≈ $30/dev-month**, vs **≈ $100/dev-month** for the same traffic at typical frontier API
+token rates. The API wins below ~25–30 developers; self-hosting wins above. See
+[`part3-optimize/COST-ESTIMATE.md`](./part3-optimize/COST-ESTIMATE.md) for the token math and the
 team-size comparison.

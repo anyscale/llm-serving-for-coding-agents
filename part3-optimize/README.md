@@ -6,7 +6,7 @@ same model id (`qwen3.6-27b`) and the same Part 2 clients; repoint `ANYSCALE_BAS
 The defaults are measured on the target GPU. See [`BENCHMARKS.md`](BENCHMARKS.md) for numbers and
 [`NOTES-incompatibilities.md`](NOTES-incompatibilities.md) for knobs that cannot be combined. The only
 unmeasured default is autoscale `target_ongoing_requests`, which is intentionally conservative. For what
-the deployment costs per developer vs buying Claude Code / Cursor seats, see
+the deployment costs per developer vs sending the same traffic to a commercial LLM API, see
 [`COST-ESTIMATE.md`](COST-ESTIMATE.md).
 
 ## What Changes
@@ -52,7 +52,7 @@ in `service_optimized.yaml` pins the `g7e` node instead.
 - `Containerfile` — `ray-llm:2.56.0` plus `runai-model-streamer`.
 - [`BENCHMARKS.md`](BENCHMARKS.md) — measured effect of each knob.
 - [`NOTES-incompatibilities.md`](NOTES-incompatibilities.md) — incompatibilities and root causes.
-- [`COST-ESTIMATE.md`](COST-ESTIMATE.md) — $/developer-month estimate vs Claude Code / Cursor seats.
+- [`COST-ESTIMATE.md`](COST-ESTIMATE.md) — $/developer-month estimate vs commercial API token pricing.
 
 ## Deploy
 
