@@ -114,3 +114,11 @@ Optimizations include:
 
 Then update `../part2-connect-clients-direct/.env`: point `ANYSCALE_BASE_URL` to the new service URL and
 relaunch the clients. See the [`Part 3 README`](./part3-optimize/README.md) for toggle defaults, [`BENCHMARKS.md`](./part3-optimize/BENCHMARKS.md) for measured numbers, and [`NOTES-incompatibilities.md`](./part3-optimize/NOTES-incompatibilities.md) for knobs that can't be combined.
+
+## What Does It Cost?
+
+Rule of thumb: one always-on RTX PRO 6000 (≈ $2,900/mo) serves ~100 developers with realistic agent
+usage → **≈ $30/dev-month**, vs $20–200/dev-month for commercial seats. Seats win below ~25–30
+developers; self-hosting wins above. See
+[`part3-optimize/COST-ESTIMATE.md`](./part3-optimize/COST-ESTIMATE.md) for the 3-number model and the
+team-size comparison.
