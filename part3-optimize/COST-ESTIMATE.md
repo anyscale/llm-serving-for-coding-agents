@@ -52,13 +52,21 @@ sees a cold start. Setup details in the [README](README.md#scale-to-zero-outside
 
 What scale-to-zero costs you in exchange:
 
-- **Cold starts.** Scaling from zero waits for node provisioning plus startup. The Part 3
-  fast-start work (~25 s weight load + ~9 s compile restore) makes the startup side ~1 minute on a
-  warm node, but provisioning a fresh `g7e` node can take several minutes — that is exactly what
-  the 7 am warm-up hides.
+- **Cold starts.** Scaling from zero waits for node provisioning plus startup. Measured
+  (2026-07-06): **≈ 100 s** to wake when the node is still up (engine restart with the fast-start
+  work), **≈ 6 min** end-to-end when a node must be provisioned. The waking request itself can
+  hang without ever getting a response — clients must retry, which is why `warmup.sh` is a retry
+  loop rather than a single ping.
 - **Off-hours users** (late night, weekends) hit that cold start on their first request, or you
   keep a commercial API key as the off-hours fallback.
 - 10 h/day is an assumption; actual billing follows real traffic plus the scale-down delay.
+
+> **⚠ Validation status (2026-07-06):** replica scale-to-zero is confirmed working, but in our
+> live test the **GPU node itself never terminated** — the app's CPU router deployment can land
+> on the only worker type (the GPU node) and pin it, so billing continued as if always-on. Until
+> the router is placed on the head node or a small CPU worker pool, treat the work-hours dollar
+> figures as the *target*, not a given: after enabling this mode, verify on the cluster's nodes
+> page that the `g7e` instance actually terminates after ~35 idle minutes.
 
 ### On-demand vs spot
 

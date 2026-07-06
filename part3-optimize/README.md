@@ -84,6 +84,12 @@ is in [`COST-ESTIMATE.md`](COST-ESTIMATE.md).
 anyscale service deploy -f service_scale_to_zero.yaml
 ```
 
+> **⚠ Validated 2026-07-06 with a caveat:** deploying this config, waking from zero (≈ 100 s with
+> the node up, ≈ 6 min with node provisioning), and replica scale-to-zero all work — but the GPU
+> **node** did not terminate in our test (the CPU router deployment can pin the only worker type),
+> so the cost savings were not realized. After deploying, confirm the `g7e` instance actually
+> terminates after ~35 idle minutes before counting on the work-hours numbers.
+
 Then schedule [`warmup.sh`](warmup.sh) for 7 am on weekdays so the first developer never waits out the
 cold start (node provisioning + ~25 s weight load + ~9 s compile restore):
 
