@@ -111,6 +111,8 @@ Optimizations include:
 - **FP8 KV cache** — halves KV memory so the full 256K context fits.
 - **CUDA graphs** — ~2.87× decode speedup on Blackwell.
 - **Autoscale** — scales 1→4 replicas with round-robin routing.
+- **Scale-to-zero variant** — [`service_scale_to_zero.yaml`](./part3-optimize/service_scale_to_zero.yaml)
+  + a weekday warm-up cron ([`warmup.sh`](./part3-optimize/warmup.sh)) cuts the bill another ~70%.
 
 Then update `../part2-connect-clients-direct/.env`: point `ANYSCALE_BASE_URL` to the new service URL and
 relaunch the clients. See the [`Part 3 README`](./part3-optimize/README.md) for toggle defaults, [`BENCHMARKS.md`](./part3-optimize/BENCHMARKS.md) for measured numbers, and [`NOTES-incompatibilities.md`](./part3-optimize/NOTES-incompatibilities.md) for knobs that can't be combined.
@@ -119,7 +121,8 @@ relaunch the clients. See the [`Part 3 README`](./part3-optimize/README.md) for 
 
 Rule of thumb: one RTX PRO 6000 serves ~100 developers with realistic agent usage —
 **≈ $30/dev-month** always-on (≈ $2,900/mo), or **≈ $8/dev-month** with scale-to-zero outside work
-hours (≈ $840/mo, warm-up cron at 7 am on weekdays) — vs **≈ $100/dev-month** for the same traffic
-at typical frontier API token rates. Break-even: ~25–30 developers always-on, ~8–10 with
-work-hours mode. See [`part3-optimize/COST-ESTIMATE.md`](./part3-optimize/COST-ESTIMATE.md) for the
-token math and the team-size comparison.
+hours (≈ $840/mo, warm-up cron at 7 am on weekdays) — vs **≈ $150/dev-month** for the same traffic
+at typical frontier API token rates with prompt-cache reads, writes, and expiry modeled.
+Break-even: ~15–30 developers always-on, ~5–10 with work-hours mode. See
+[`part3-optimize/COST-ESTIMATE.md`](./part3-optimize/COST-ESTIMATE.md) for the token math and the
+team-size comparison.

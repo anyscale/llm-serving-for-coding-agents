@@ -4,11 +4,11 @@ A simple, reproducible **estimate** (±2×, not exact accounting) of what the Pa
 developer per month, compared with sending the same agent traffic to a commercial LLM API at
 per-token rates. All prices are rounded list prices (July 2026).
 
-**TL;DR:** the same usage costs **≈ $100/dev-month** at typical frontier API token rates vs
-**≈ $30/dev-month** self-hosted on an always-on RTX PRO 6000 (`g7e.4xlarge`, ≈ $2,900/mo,
-~100 developers/GPU) — or **≈ $8/dev-month** with scale-to-zero outside work hours (GPU up
-~10 h/day on weekdays, ≈ $840/mo). Always-on breaks even at ≈ 25–30 developers; work-hours mode
-at ≈ 8–10 — subject to the model-quality caveat below.
+**TL;DR:** the same usage costs **≈ $150/dev-month** at typical frontier API token rates (with
+prompt-cache reads, writes, and expiry modeled) vs **≈ $30/dev-month** self-hosted on an always-on
+RTX PRO 6000 (`g7e.4xlarge`, ≈ $2,900/mo, ~100 developers/GPU) — or **≈ $8/dev-month** with
+scale-to-zero outside work hours (GPU up ~10 h/day on weekdays, ≈ $840/mo). Always-on breaks even
+at ≈ 15–30 developers; work-hours mode at ≈ 5–10 — subject to the model-quality caveat below.
 
 ## Self-hosted side — three numbers
 
@@ -36,9 +36,11 @@ minutes — so one GPU serves far more developers than its 24 concurrent slots:
 ### Cheaper still: scale to zero outside work hours
 
 Developers only use the agent during the workday, so don't pay for the GPU overnight or on
-weekends: set `min_replicas: 0` in the autoscaling config and schedule a warm-up ping (any cron —
-an Anyscale Job on a schedule, or plain `cron` + `curl` — sending one small request at 7 am on
-weekdays) so the first developer of the day never sees a cold start.
+weekends: deploy [`service_scale_to_zero.yaml`](service_scale_to_zero.yaml) (same deployment with
+`MIN_REPLICAS=0` + `min_nodes: 0`) and schedule [`warmup.sh`](warmup.sh) at 7 am on weekdays —
+either as an Anyscale scheduled job ([`warmup_schedule.yaml`](warmup_schedule.yaml), applied with
+`anyscale schedule apply`) or from any box with cron — so the first developer of the day never
+sees a cold start. Setup details in the [README](README.md#scale-to-zero-outside-work-hours).
 
 ```
 10 h/day × 21 weekdays ≈ 210 GPU-hours/month × $4/hr ≈ $840/mo   (vs $2,900 always-on)
@@ -63,60 +65,72 @@ profile** the GPU serves. From the measured workload (Claude Code session replay
 input tokens, of which all but a few thousand are repeated context that APIs bill at cached rates —
 and produces a short output.
 
-Per turn, at typical frontier-model rates (≈ $3/MTok input, ≈ $15/MTok output, cached input ≈ 0.1×;
-similar across providers):
+Cache mechanics matter more than list $/MTok. At typical frontier-model rates (≈ $3/MTok base
+input, ≈ $15/MTok output), cache **reads** are 0.1× base but cache **writes** are 1.25× base, and
+the cache expires after ~5 idle minutes. So there are two kinds of turns:
+
+**Warm turn** — the previous turn was < 5 min ago, so the whole history is a cache hit and only
+the new tokens are written:
 
 | Component | Tokens/turn | Rate | ≈ $/turn |
 |---|---|---|---|
-| Context re-read (cached input) | ~66K | $0.30/MTok | $0.020 |
-| New input | ~4K | $3/MTok | $0.012 |
+| Context re-read (cache hit, 0.1×) | ~66K | $0.30/MTok | $0.020 |
+| New input (cache write, 1.25×) | ~4K | $3.75/MTok | $0.015 |
 | Output | ~150 | $15/MTok | $0.002 |
-| **Total** | ~70K | | **≈ $0.034** |
+| **Warm total** | ~70K | | **≈ $0.04** |
+
+**Cold turn** — the first turn of a session, or any turn after a > 5-minute pause: the entire
+~70K context is **re-written** to the cache at 1.25× → ~70K × $3.75/MTok ≈ **$0.26** — about 7×
+a warm turn. Agent use is bursty, so pauses happen: with roughly 1 cold turn per 10–20 (session
+starts, coffee breaks, meetings), the blended average is **≈ $0.05/turn**.
 
 A moderately active agent developer runs ≈ 50 turns per active hour (that pace is what produces the
 measured 35–40% in-flight burst duty at ~23 s per turn) for ~2–4 hours a day:
 
 ```
 ~50 turns/hr × 2–4 hr/day × 21 days ≈ 2,000–4,000 turns/month
-× $0.034/turn ≈ $70–140/dev-month   →  planning number ≈ $100
+× $0.05/turn ≈ $100–200/dev-month   →  planning number ≈ $150
 ```
 
-That is ~150–300 MTok of (mostly cached) context re-reads per developer per month — which is why
-the comparison must be token-based with caching modeled, not raw list $/MTok.
+That is ~150–300 MTok of context re-reads and re-writes per developer per month. Rates above are
+Sonnet-class; an Opus-class model ($5/$25) scales the API column ≈ 1.7×, a top-tier model
+($10/$50) ≈ 3.3×. The self-hosted side is immune to all of this: vLLM's prefix cache costs nothing
+per hit or write, and KV blocks are evicted only under memory pressure, not on a 5-minute clock.
 
 ## Comparison by team size
 
 Self-hosted at the 25% planning number (~100 devs/GPU, GPUs added as `ceil(devs / 100)`), API at
-the ≈ $100/dev-month planning number:
+the ≈ $150/dev-month planning number:
 
 | Team size | GPUs | Always-on ≈ $/dev-mo | Work-hours ≈ $/dev-mo | API ≈ $/dev-mo |
 |---|---|---|---|---|
-| 10 | 1 | $290 | $84 | $100 |
-| 25 | 1 | $115 | $34 | $100 |
-| 50 | 1 | $60 | $17 | $100 |
-| 100 | 1 | $30 | $8 | $100 |
-| 250 | 3 | $35 | $10 | $100 |
+| 10 | 1 | $290 | $84 | $150 |
+| 25 | 1 | $115 | $34 | $150 |
+| 50 | 1 | $60 | $17 | $150 |
+| 100 | 1 | $30 | $8 | $150 |
+| 250 | 3 | $35 | $10 | $150 |
 
-**Rules of thumb: one always-on GPU ≈ $2,900/mo ≈ the API bill of ~30 moderately active agent
-developers. With scale-to-zero work-hours mode (≈ $840/mo), the break-even drops to ~8–10
+**Rules of thumb: one always-on GPU ≈ $2,900/mo ≈ the API bill of ~20 moderately active agent
+developers. With scale-to-zero work-hours mode (≈ $840/mo), the break-even drops to ~5–10
 developers.**
 
 *(For reference, subscription seats cap the API bill at flat rates — Cursor Pro/Pro+/Ultra
-$20/$60/$200, Claude Pro/Max $20/$100/$200 per dev-month. A ~$100 seat lands almost exactly on the
+$20/$60/$200, Claude Pro/Max $20/$100/$200 per dev-month. The $100–200 seats bracket the ≈ $150
 API planning number, so the break-even barely moves if seats are on the table.)*
 
 ## Caveats
 
 - **Quality gap:** a 27B model vs a frontier model — cheaper per token isn't automatically cheaper
   per task if it takes more iterations to finish the same work.
-- The API math assumes prompt caching applies to essentially all repeated context. Without caching
-  the per-turn cost is ~6× higher; with a provider that discounts cache reads less than 10×, scale
-  the cached-input row accordingly.
+- The softest API-side assumption is the cold-turn share (1 in 10–20): every pause longer than the
+  ~5-minute cache TTL adds a ~$0.26 full-context re-write, so choppier usage raises the API bill.
+  Providers with different cache multipliers (reads ≠ 0.1×, writes ≠ 1.25×) shift the math
+  proportionally.
 - These are rounded list prices and usage estimates; treat every number as ±2×.
-- The shipped [`service_optimized.yaml`](service_optimized.yaml) autoscales 1→4 (always-on
-  conservative case); the work-hours numbers require changing `min_replicas` to 0 and adding the
-  warm-up cron. Spot pricing lowers costs further, but `g7e` capacity can be flaky — spot-first
-  with cross-zone scaling is the workaround.
+- [`service_optimized.yaml`](service_optimized.yaml) autoscales 1→4 (always-on conservative case);
+  the work-hours numbers use the shipped [`service_scale_to_zero.yaml`](service_scale_to_zero.yaml)
+  plus the [`warmup.sh`](warmup.sh) cron. Spot pricing lowers costs further, but `g7e` capacity can
+  be flaky — spot-first with cross-zone scaling is the workaround.
 - To tighten the numbers for your org, capture one real workday of agent traffic and count turns,
   tokens per turn, and `Σ(request wall time) / session wall time` — no GPU needed.
 
