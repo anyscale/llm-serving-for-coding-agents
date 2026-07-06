@@ -95,4 +95,9 @@ cold start (node provisioning + ~25 s weight load + ~9 s compile restore):
 Trade-off: an off-hours first request (late night, weekend) waits through the cold start — keep a
 commercial API key as the off-hours fallback, or use the always-on `service_optimized.yaml` instead.
 
+To cut the GPU rate another ~43%, uncomment `market_type: PREFER_SPOT` (and the cross-zone flag) in
+[`service_scale_to_zero.yaml`](service_scale_to_zero.yaml) — spot-first with on-demand fallback;
+preempted replicas recover in about the ~3-minute cold start. On-demand vs spot pricing is compared
+in [`COST-ESTIMATE.md`](COST-ESTIMATE.md).
+
 ← Back: [Part 2](../part2-connect-clients-direct/README.md) · Overview: [top-level README](../README.md)

@@ -7,10 +7,11 @@ per-token rates. All prices are rounded list prices (July 2026).
 **TL;DR:** the same usage costs **≈ $150/dev-month** at typical frontier API token rates (with
 prompt-cache reads, writes, and expiry modeled) vs **≈ $30/dev-month** self-hosted on an always-on
 RTX PRO 6000 (`g7e.4xlarge`, ≈ $2,900/mo, ~100 developers/GPU) — or **≈ $8/dev-month** with
-scale-to-zero outside work hours (GPU up ~10 h/day on weekdays, ≈ $840/mo). Always-on breaks even
-at ≈ 15–30 developers; work-hours mode at ≈ 5–10 — subject to the model-quality caveat below.
-Measured real-world heavy usage runs far higher — Pylon reported **≈ $780/dev-month** at API
-rates — and at that intensity self-hosting breaks even at **~4 developers**.
+scale-to-zero outside work hours (GPU up ~10 h/day on weekdays, ≈ $840/mo). Spot instances
+(≈ $2.3/hr, −43%) cut those to **≈ $17** and **≈ $5**. Always-on breaks even at ≈ 15–30
+developers (spot ~11); work-hours mode at ≈ 5–10 (spot ~3) — subject to the model-quality caveat
+below. Measured real-world heavy usage runs far higher — Pylon reported **≈ $780/dev-month** at
+API rates — and at that intensity self-hosting breaks even at **~4 developers**.
 
 ## Self-hosted side — three numbers
 
@@ -21,7 +22,7 @@ $/dev-month  =  monthly GPU cost  ÷  developers supported per GPU
 
 | # | Input | Value | Source |
 |---|---|---|---|
-| 1 | GPU price (`g7e.4xlarge` on-demand) | ≈ $4/hr → **≈ $2,900/mo** always-on | AWS list price |
+| 1 | GPU price (`g7e.4xlarge`, us-west-2) | **≈ $4/hr on-demand · ≈ $2.3/hr spot (−43%)** | AWS list/spot price |
 | 2 | Concurrent Claude Code sessions per GPU | **≈ 24** | measured: 48 replayed sessions on 2 replicas at TTFT mean 7.8 s / p95 14 s ([`BENCHMARKS.md`](BENCHMARKS.md) §6, round-robin row) |
 | 3 | Duty cycle — fraction of the workday one developer's session has a request in flight | **≈ 25%** planning number (10–40% range) | session-trace timestamps: ~35–40% in flight during active bursts; a full workday averages lower |
 
@@ -58,6 +59,25 @@ What scale-to-zero costs you in exchange:
 - **Off-hours users** (late night, weekends) hit that cold start on their first request, or you
   keep a commercial API key as the off-hours fallback.
 - 10 h/day is an assumption; actual billing follows real traffic plus the scale-down delay.
+
+### On-demand vs spot
+
+Anyscale schedules workers on spot with on-demand fallback (`market_type: PREFER_SPOT` in the
+compute config, ideally with cross-zone scaling for availability). At us-west-2 rates
+($4.00 on-demand / $2.27 spot per hour), the four self-hosted modes at the ~100 devs/GPU planning
+number:
+
+| Mode | GPU $/hr | ≈ GPU $/mo | ≈ $/dev-mo | Break-even vs API ≈ $150 |
+|---|---|---|---|---|
+| Always-on, on-demand | $4.00 | $2,900 | $30 | ~20 devs |
+| Always-on, spot | $2.27 | $1,700 | $17 | ~11 devs |
+| Work-hours, on-demand | $4.00 | $840 | $8 | ~6 devs |
+| **Work-hours, spot** | **$2.27** | **$480** | **$5** | **~3 devs** |
+
+Spot's trade-off: instances can be preempted with a 2-minute warning, and the service then
+restarts the replica on a fresh node — with the Part 3 fast-start work that recovery is on the
+order of the measured ~3-minute cold start. `PREFER_SPOT` falls back to on-demand when spot
+capacity is tight, so preemption costs you minutes of latency, not availability.
 
 ## API side — the same traffic, priced per token
 
@@ -108,7 +128,8 @@ startup-wide usage — parallel sessions, background agents, all-day runs — la
 ## Comparison by team size
 
 Self-hosted at the 25% planning number (~100 devs/GPU, GPUs added as `ceil(devs / 100)`), API at
-the ≈ $150/dev-month planning number:
+the ≈ $150/dev-month planning number. Rows are on-demand — multiply the self-hosted columns by
+≈ 0.57 for spot:
 
 | Team size | GPUs | Always-on ≈ $/dev-mo | Work-hours ≈ $/dev-mo | API ≈ $/dev-mo |
 |---|---|---|---|---|
@@ -146,8 +167,10 @@ token at standard API rates — the 3.5×-overnight jump Pylon hit.)*
 - These are rounded list prices and usage estimates; treat every number as ±2×.
 - [`service_optimized.yaml`](service_optimized.yaml) autoscales 1→4 (always-on conservative case);
   the work-hours numbers use the shipped [`service_scale_to_zero.yaml`](service_scale_to_zero.yaml)
-  plus the [`warmup.sh`](warmup.sh) cron. Spot pricing lowers costs further, but `g7e` capacity can
-  be flaky — spot-first with cross-zone scaling is the workaround.
+  plus the [`warmup.sh`](warmup.sh) cron.
+- Spot prices float (the $2.27 is a us-west-2 snapshot) and preemptions interrupt in-flight
+  requests for ~3 minutes. `g7e` on-demand capacity can also be tight in a single AZ —
+  `PREFER_SPOT` plus cross-zone scaling has been the reliable combination in practice.
 - To tighten the numbers for your org, capture one real workday of agent traffic and count turns,
   tokens per turn, and `Σ(request wall time) / session wall time` — no GPU needed.
 
