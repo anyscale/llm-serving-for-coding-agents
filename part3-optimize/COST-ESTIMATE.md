@@ -6,8 +6,9 @@ per-token rates. All prices are rounded list prices (July 2026).
 
 **TL;DR:** the same usage costs **≈ $100/dev-month** at typical frontier API token rates vs
 **≈ $30/dev-month** self-hosted on an always-on RTX PRO 6000 (`g7e.4xlarge`, ≈ $2,900/mo,
-~100 developers/GPU). The API wins below ≈ 25–30 developers because the GPU floor dominates;
-above that, self-hosting wins — subject to the model-quality caveat below.
+~100 developers/GPU) — or **≈ $8/dev-month** with scale-to-zero outside work hours (GPU up
+~10 h/day on weekdays, ≈ $840/mo). Always-on breaks even at ≈ 25–30 developers; work-hours mode
+at ≈ 8–10 — subject to the model-quality caveat below.
 
 ## Self-hosted side — three numbers
 
@@ -31,6 +32,28 @@ minutes — so one GPU serves far more developers than its 24 concurrent slots:
 | 50% | 48 | $60 |
 | **25% (planning number)** | **~100** | **$30** |
 | 10% (typical mixed workday) | ~240 | $12 |
+
+### Cheaper still: scale to zero outside work hours
+
+Developers only use the agent during the workday, so don't pay for the GPU overnight or on
+weekends: set `min_replicas: 0` in the autoscaling config and schedule a warm-up ping (any cron —
+an Anyscale Job on a schedule, or plain `cron` + `curl` — sending one small request at 7 am on
+weekdays) so the first developer of the day never sees a cold start.
+
+```
+10 h/day × 21 weekdays ≈ 210 GPU-hours/month × $4/hr ≈ $840/mo   (vs $2,900 always-on)
+÷ ~100 devs/GPU  ≈  $8/dev-month
+```
+
+What scale-to-zero costs you in exchange:
+
+- **Cold starts.** Scaling from zero waits for node provisioning plus startup. The Part 3
+  fast-start work (~25 s weight load + ~9 s compile restore) makes the startup side ~1 minute on a
+  warm node, but provisioning a fresh `g7e` node can take several minutes — that is exactly what
+  the 7 am warm-up hides.
+- **Off-hours users** (late night, weekends) hit that cold start on their first request, or you
+  keep a commercial API key as the off-hours fallback.
+- 10 h/day is an assumption; actual billing follows real traffic plus the scale-down delay.
 
 ## API side — the same traffic, priced per token
 
@@ -66,15 +89,16 @@ the comparison must be token-based with caching modeled, not raw list $/MTok.
 Self-hosted at the 25% planning number (~100 devs/GPU, GPUs added as `ceil(devs / 100)`), API at
 the ≈ $100/dev-month planning number:
 
-| Team size | GPUs | Self-hosted ≈ $/dev-mo | API ≈ $/dev-mo | Cheaper option |
+| Team size | GPUs | Always-on ≈ $/dev-mo | Work-hours ≈ $/dev-mo | API ≈ $/dev-mo |
 |---|---|---|---|---|
-| 10 | 1 | $290 | $100 | API |
-| 25 | 1 | $115 | $100 | ≈ tie |
-| 50 | 1 | $60 | $100 | self-hosted |
-| 100 | 1 | $30 | $100 | self-hosted |
-| 250 | 3 | $35 | $100 | self-hosted |
+| 10 | 1 | $290 | $84 | $100 |
+| 25 | 1 | $115 | $34 | $100 |
+| 50 | 1 | $60 | $17 | $100 |
+| 100 | 1 | $30 | $8 | $100 |
+| 250 | 3 | $35 | $10 | $100 |
 
-**Rule of thumb: one always-on GPU ≈ $2,900/mo ≈ the API bill of ~30 moderately active agent
+**Rules of thumb: one always-on GPU ≈ $2,900/mo ≈ the API bill of ~30 moderately active agent
+developers. With scale-to-zero work-hours mode (≈ $840/mo), the break-even drops to ~8–10
 developers.**
 
 *(For reference, subscription seats cap the API bill at flat rates — Cursor Pro/Pro+/Ultra
@@ -89,10 +113,10 @@ API planning number, so the break-even barely moves if seats are on the table.)*
   the per-turn cost is ~6× higher; with a provider that discounts cache reads less than 10×, scale
   the cached-input row accordingly.
 - These are rounded list prices and usage estimates; treat every number as ±2×.
-- The service autoscales 1→4 (see [`service_optimized.yaml`](service_optimized.yaml)), so
-  nights/weekends cost less than the always-on figure used here; spot pricing lowers it further.
-  We quote always-on on-demand as the conservative case. Note `g7e` capacity can be flaky —
-  spot-first with cross-zone scaling is the workaround.
+- The shipped [`service_optimized.yaml`](service_optimized.yaml) autoscales 1→4 (always-on
+  conservative case); the work-hours numbers require changing `min_replicas` to 0 and adding the
+  warm-up cron. Spot pricing lowers costs further, but `g7e` capacity can be flaky — spot-first
+  with cross-zone scaling is the workaround.
 - To tighten the numbers for your org, capture one real workday of agent traffic and count turns,
   tokens per turn, and `Σ(request wall time) / session wall time` — no GPU needed.
 

@@ -117,8 +117,9 @@ relaunch the clients. See the [`Part 3 README`](./part3-optimize/README.md) for 
 
 ## What Does It Cost?
 
-Rule of thumb: one always-on RTX PRO 6000 (≈ $2,900/mo) serves ~100 developers with realistic agent
-usage → **≈ $30/dev-month**, vs **≈ $100/dev-month** for the same traffic at typical frontier API
-token rates. The API wins below ~25–30 developers; self-hosting wins above. See
-[`part3-optimize/COST-ESTIMATE.md`](./part3-optimize/COST-ESTIMATE.md) for the token math and the
-team-size comparison.
+Rule of thumb: one RTX PRO 6000 serves ~100 developers with realistic agent usage —
+**≈ $30/dev-month** always-on (≈ $2,900/mo), or **≈ $8/dev-month** with scale-to-zero outside work
+hours (≈ $840/mo, warm-up cron at 7 am on weekdays) — vs **≈ $100/dev-month** for the same traffic
+at typical frontier API token rates. Break-even: ~25–30 developers always-on, ~8–10 with
+work-hours mode. See [`part3-optimize/COST-ESTIMATE.md`](./part3-optimize/COST-ESTIMATE.md) for the
+token math and the team-size comparison.
