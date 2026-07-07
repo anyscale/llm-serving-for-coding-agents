@@ -31,10 +31,11 @@ ENABLE_CUDA_GRAPHS = True
 #     LOADING off (vllm#42060): you trade the fast S3 cold-start for the 1.9x decode.  Default OFF.  See BENCHMARKS.md.
 ENABLE_SPEC_DECODE = False
 
-# (6) PREFIX-AWARE ROUTING — send a session's turns to the replica that cached its prefix. Measured to
-#     HOTSPOT badly (up to ~263x worse TTFT than round-robin; still ~39x even with many users + a clean
-#     shared prefix — see BENCHMARKS.md §6) — keep OFF unless you have many DISTINCT large prefixes and
-#     validate on YOUR traffic. Only matters with max_replicas > 1.
+# (6) PREFIX-AWARE ROUTING — send a session's turns to the replica that cached its prefix. Keep OFF for the
+#     single-user coding-agent trace used here: most requests share the same system prompts, skills, and
+#     harness context, so round-robin still benefits from each replica's local vLLM prefix cache. Consider
+#     enabling only for multi-user traffic with diverse byte-stable prefixes, then tune the imbalance knobs
+#     so affinity does not overload one replica. Only matters with max_replicas > 1.
 ENABLE_PREFIX_ROUTING = False
 
 # DIRECT STREAMING is REQUIRED for this demo (Parts 1 & 2 connect Claude Code / Codex / Cursor straight to
@@ -50,6 +51,8 @@ if ENABLE_SPEC_DECODE and ENABLE_FAST_MODEL_LOADING:
     print("[config] ENABLE_SPEC_DECODE=True -> disabling ENABLE_FAST_MODEL_LOADING "
           "(RunAI Streamer conflicts with MTP, vllm#42060); using the HF loader instead.")
     ENABLE_FAST_MODEL_LOADING = False
+
+import os
 
 from ray.serve.llm import LLMConfig, build_openai_app
 
@@ -122,19 +125,26 @@ if ENABLE_COMPILE_CACHE:
 # ── Deployment / autoscaling ─────────────────────────────────────────────────
 deployment_config = dict(
     autoscaling_config=dict(
-        min_replicas=1,            # always-on baseline: no cold start during work hours
+        # 1 (default) = always-on: no cold start during work hours. service_scale_to_zero.yaml sets
+        # MIN_REPLICAS=0 (+ compute min_nodes: 0) so idle nights/weekends cost nothing — pair it with
+        # warmup.sh on a weekday-morning cron (warmup_schedule.yaml); cost math in COST-ESTIMATE.md.
+        min_replicas=int(os.environ.get("MIN_REPLICAS", "1")),
         max_replicas=4,            # scale out for peak; each replica = 1 RTX PRO 6000 node (g7e.4xlarge)
         target_ongoing_requests=8,  # CONSERVATIVE, untested on Pro 6000 — scale out early so the autoscaler
                                     # doesn't pile cold ~73K-tok prefills on one GPU (TTFT/preemption). TODO: measure
                                     # the Pro 6000 capacity cliff (BENCHMARKS "TODO") and tune; raise toward 16 if prompts cache well.
         upscale_delay_s=30,
-        downscale_delay_s=600,
+        # service_scale_to_zero.yaml raises this to 1800 so a lunch-break lull doesn't trigger a
+        # mid-day cold start.
+        downscale_delay_s=int(os.environ.get("DOWNSCALE_DELAY_S", "600")),
     ),
     max_ongoing_requests=64,
 )
 
-# (6) Prefix-aware routing (only with max_replicas > 1 AND diverse prefixes; tune imbalanced_threshold).
+# (6) Prefix-aware routing (only with max_replicas > 1 AND diverse stable prefixes).
 if ENABLE_PREFIX_ROUTING:
+    # Tune these thresholds on real traffic. Too much affinity can overload the one replica with the closest
+    # prefix cache, even when another replica has spare capacity.
     # Direct streaming is always on here, and the stock PrefixCacheAffinityRouter HANGS under it (it can't
     # read the raw body the direct-streaming ingress forwards). So use the DirectStreamingPrefixCacheRouter
     # subclass in direct_streaming_prefix_router.py, which parses that body. Upstream fix:
