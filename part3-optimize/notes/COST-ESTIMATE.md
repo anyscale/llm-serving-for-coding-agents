@@ -13,7 +13,7 @@ That means a 100-developer team saves roughly:
 
 - **~$17K/month vs $200 subscription seats** with one always-on on-demand GPU.
 - **~$77K/month vs $800 token-metered billing** with one always-on on-demand GPU.
-- **~$19K/month vs seats** and **~$79K/month vs token billing** if scale-to-zero reliably keeps the
+- **~$19K/month vs seats** and **~$79K/month vs token billing** if work-hours mode reliably keeps the
   GPU on only during work hours.
 
 The main risk is model quality: a cheaper 27B model only saves money if it can finish the same work
@@ -114,7 +114,7 @@ commercial baseline in that self-hosting mode.
 | 100 | 1 | ~$20.0K/mo | ~$80.0K/mo | ~$2.9K/mo | ~$17.1K/mo | ~$77.1K/mo |
 | 250 | 3 | ~$50.0K/mo | ~$200.0K/mo | ~$8.7K/mo | ~$41.3K/mo | ~$191.3K/mo |
 
-Work-hours mode improves the savings if scale-to-zero actually terminates the GPU node:
+Work-hours mode improves the savings if the min-replica-0 deployment actually terminates the GPU node:
 
 | Team size | GPUs | Work-hours GPU cost | Savings vs seats | Savings vs token bill |
 |---|---:|---:|---:|---:|
@@ -148,17 +148,17 @@ Work-hours mode assumes the GPU runs about 10 hours/day for 21 weekdays:
 ~$840 / ~100 developers = ~$8/dev-month
 ```
 
-The scale-to-zero config lives in [`scale-to-zero/`](scale-to-zero/). It uses
-`scale-to-zero/service_scale_to_zero.yaml`, `scale-to-zero/warmup.sh`, and
-`scale-to-zero/warmup_schedule.yaml`.
+The work-hours setup uses [`configs/service-work-hours.yaml`](../configs/service-work-hours.yaml),
+[`configs/schedule-work-hours-warmup.yaml`](../configs/schedule-work-hours-warmup.yaml), and
+[`scripts/warmup.sh`](../scripts/warmup.sh).
 
-Important caveat: replica scale-to-zero worked in testing, but the **GPU node did not always
+Important caveat: replica scale-down to zero worked in testing, but the **GPU node did not always
 terminate** because the CPU router could keep the only worker type alive. Treat work-hours cost as a
 target until the cluster nodes page confirms the `g7e` node terminates after about 35 idle minutes.
 
-Spot lowers GPU cost by about **43%** in `us-west-2`. The Part 3 config uses
-`market_type: PREFER_SPOT`, so it can fall back to on-demand when spot capacity is tight. The trade-off
-is interruption: a spot preemption can add a few minutes of recovery latency.
+Spot lowers GPU cost by about **43%** in `us-west-2`. The work-hours config can opt into
+`market_type: PREFER_SPOT`, which falls back to on-demand when spot capacity is tight. The trade-off is
+interruption: a spot preemption can add a few minutes of recovery latency.
 
 ## Caveats
 
@@ -168,7 +168,7 @@ is interruption: a spot preemption can add a few minutes of recovery latency.
   GPU supports closer to 24 continuously active sessions, not ~100 bursty developers.
 - **Cache expiry:** every pause longer than about 5 minutes can trigger a full-context cache write on
   token-metered APIs.
-- **Scale-to-zero:** work-hours savings depend on the GPU node actually terminating.
+- **Work-hours mode:** savings depend on the GPU node actually terminating.
 - **Spot capacity:** spot prices and availability vary.
 
 ## Sources
@@ -181,5 +181,5 @@ is interruption: a spot preemption can add a few minutes of recovery latency.
 [Pylon seat-cliff post](https://x.com/marty_kausas/status/2064739372625232068) |
 [Qwen3.6-27B launch post](https://qwen.ai/blog?id=qwen3.6-27b)
 
-Back: [Part 3 README](README.md) | Benchmarks: [`BENCHMARKS.md`](BENCHMARKS.md) | Overview:
-[top-level README](../README.md)
+Back: [Part 3 README](../README.md) | Benchmarks: [`BENCHMARKS.md`](BENCHMARKS.md) | Overview:
+[top-level README](../../README.md)

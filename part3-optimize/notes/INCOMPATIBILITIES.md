@@ -1,6 +1,7 @@
 # Optimization Compatibility Notes
 
-Read this before changing toggles in `serve_qwen3_6_27b_optimized.py`.
+Read this before changing toggles in
+[`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py).
 
 These findings were measured or root-caused on `qwen3.6-27b` FP8, 1× RTX PRO 6000 96 GB
 (`g7e.4xlarge`), `ray-llm:2.56.0-py312-cu130`, and vLLM 0.22.0. Full numbers are in
@@ -48,7 +49,8 @@ In this tutorial, direct streaming is always on. That is why prefix routing, whe
 
 ## What Composes
 
-This set works together and is enabled in `serve_qwen3_6_27b_optimized.py`:
+This set works together and is enabled in
+[`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py):
 
 - RunAI Streamer
 - torch.compile cache
