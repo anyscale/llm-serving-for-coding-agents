@@ -1,18 +1,20 @@
-# service_scale_to_zero.yaml — the SAME optimized deployment, but the GPU scales to ZERO when idle
-# (nights/weekends): MIN_REPLICAS=0 + min_nodes: 0. At ~10 h/day on weekdays that's ≈ $840/mo vs
-# ≈ $2,900 always-on — see ../COST-ESTIMATE.md. Pair it with warmup.sh on a weekday-morning cron
-# (warmup_schedule.yaml) so the first developer of the day never waits out the cold start.
+# service-work-hours.yaml - optimized deployment for work-hours-only GPU spend.
+#
+# This is the min-replica-0 mode: idle periods scale the Serve replica to zero and allow the g7e node
+# to terminate. Pair it with warmup.sh on a weekday-morning cron
+# (schedule-work-hours-warmup.yaml) so the first developer of the day does not wait out the
+# cold start.
 #
 # Deploy from the part3-optimize/ directory (containerfile: and working_dir: resolve against the
-# CLI's CWD):  anyscale service deploy -f scale-to-zero/service_scale_to_zero.yaml --working-dir .
-name: qwen3-6-27b-fp8-rtxpro6000-s2z
+# CLI's CWD): anyscale service deploy -f service-work-hours.yaml --working-dir .
+name: qwen3-6-27b-fp8-rtxpro6000-work-hours
 containerfile: Containerfile
 env_vars:
-  # Direct-streaming flags — service-level so the Serve controller sees them (see service_optimized.yaml).
+  # Direct-streaming flags: service-level so the Serve controller sees them.
   RAY_SERVE_ENABLE_HA_PROXY: "1"
   RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
-  # Scale-to-zero knobs read back by serve_qwen3_6_27b_optimized.py:
-  MIN_REPLICAS: "0"          # idle -> 0 replicas -> the g7e node terminates (min_nodes: 0 below)
+  # Work-hours knobs read back by serve_qwen3_6_27b_optimized.py.
+  MIN_REPLICAS: "0"          # idle -> 0 replicas -> the g7e node can terminate (min_nodes: 0 below)
   DOWNSCALE_DELAY_S: "1800"  # 30 min idle before scaling down, so a lunch-break lull != a cold start
 compute_config:
   # Uncomment to improve spot availability by drawing from every AZ in the region:
@@ -23,7 +25,7 @@ compute_config:
     - instance_type: g7e.4xlarge
       min_nodes: 0                 # let the GPU node terminate when the deployment sits at 0 replicas
       max_nodes: 4                 # autoscale headroom (matches max_replicas=4)
-      # Spot cuts the GPU rate ~43% (COST-ESTIMATE.md). Uncomment for spot-first with on-demand
+      # Spot cuts the GPU rate ~43% (notes/COST-ESTIMATE.md). Uncomment for spot-first with on-demand
       # fallback; preempted replicas restart on a fresh node (~3 min with the fast-start work).
       # market_type: PREFER_SPOT
 working_dir: .

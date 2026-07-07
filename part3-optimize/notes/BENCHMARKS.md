@@ -1,6 +1,7 @@
 # Benchmarks
 
-These measurements map to the `ENABLE_*` control panel in `serve_qwen3_6_27b_optimized.py`.
+These measurements map to the `ENABLE_*` control panel in
+[`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py).
 
 Unless noted, results are from 1× RTX PRO 6000 (`g7e.4xlarge`, 96 GB, SM120), TP=1, vLLM 0.22.0
 (`ray-llm:2.56.0`). Anything not yet remeasured on the Pro 6000 is listed in [TODO](#todo).
@@ -26,7 +27,7 @@ Spec decode is off because it disables the fast S3 loader on vLLM 0.22.0
 single-user replay data in this tutorial does not need replica affinity; see [Prefix Routing](#6-prefix-routing)
 for when to opt in. The built-in router also needs the ray-llm 2.57 direct-streaming fix
 ([ray#64328](https://github.com/ray-project/ray/pull/64328)). See
-[`NOTES-incompatibilities.md`](NOTES-incompatibilities.md) for combinations that cannot coexist.
+[`INCOMPATIBILITIES.md`](INCOMPATIBILITIES.md) for combinations that cannot coexist.
 
 ## Workloads
 
@@ -135,7 +136,7 @@ ray-llm 2.57.
 
 [Direct streaming](https://docs.ray.io/en/latest/serve/llm/user-guides/direct-streaming.html) exposes `/v1/messages` for Claude Code and `/v1/responses` for Codex alongside
 `/v1/chat/completions`. It is required for this demo and is enabled by service-level env vars in
-`service_optimized.yaml`, so keep it on.
+the Part 3 service YAMLs, so keep it on.
 
 ## TODO
 

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# warmup.sh — wake the scale-to-zero service before the workday.
+# warmup.sh - wake the work-hours service before the workday.
 #
 # Sends one tiny completion and retries until the service answers. A cold start from zero =
 # g7e node provisioning (minutes) + ~25 s weight load + ~9 s compile restore, so the default
 # budget is 15 minutes (override with WARMUP_TIMEOUT_S).
 #
 # Reads the same variables as part2-connect-clients-direct/.env:
-#   ANYSCALE_BASE_URL  — service URL ending in /v1, no trailing slash
-#   ANYSCALE_API_KEY   — raw bearer token
-#   ANYSCALE_MODEL     — model id (default qwen3.6-27b)
+#   ANYSCALE_BASE_URL  - service URL ending in /v1, no trailing slash
+#   ANYSCALE_API_KEY   - raw bearer token
+#   ANYSCALE_MODEL     - model id (default qwen3.6-27b)
 set -euo pipefail
 
 : "${ANYSCALE_BASE_URL:?set ANYSCALE_BASE_URL (service URL ending in /v1)}"
@@ -29,6 +29,6 @@ while true; do
     echo "warmup timed out after ${WARMUP_TIMEOUT_S:-900}s" >&2
     exit 1
   fi
-  echo "cold start in progress — retrying in 30 s"
+  echo "cold start in progress - retrying in 30 s"
   sleep 30
 done

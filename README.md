@@ -103,7 +103,7 @@ autoscale 1→4:
 
 ```bash
 cd ../part3-optimize
-anyscale service deploy -f service_optimized.yaml
+anyscale service deploy -f service-always-on.yaml --working-dir .
 ```
 
 Optimizations include:
@@ -113,14 +113,17 @@ Optimizations include:
 - **FP8 KV cache** — halves KV memory so the full 256K context fits.
 - **CUDA graphs** — ~2.87× decode speedup on Blackwell.
 - **Autoscale** — scales 1→4 replicas with round-robin routing.
-- **Scale-to-zero variant** — [`part3-optimize/scale-to-zero/`](./part3-optimize/scale-to-zero/)
-  (service config + weekday warm-up cron) targets work-hours-only GPU spend; verify the `g7e` node
-  actually terminates after idle before relying on the savings.
+- **Always-on config** — [`part3-optimize/service-always-on.yaml`](./part3-optimize/service-always-on.yaml)
+  keeps one warm replica online for min-replica-1 service behavior.
+- **Work-hours config** — [`part3-optimize/service-work-hours.yaml`](./part3-optimize/service-work-hours.yaml)
+  uses min replicas 0 plus [`warmup.sh`](./part3-optimize/warmup.sh) to target
+  work-hours-only GPU spend; verify the `g7e` node actually terminates after idle before relying on
+  the savings.
 
 Then update `../part2-connect-clients-direct/.env`: point `ANYSCALE_BASE_URL` to the new service URL and
 relaunch the clients. See the [`Part 3 README`](./part3-optimize/README.md) for toggle defaults and the
-scale-to-zero caveat, [`BENCHMARKS.md`](./part3-optimize/BENCHMARKS.md) for measured numbers, and
-[`NOTES-incompatibilities.md`](./part3-optimize/NOTES-incompatibilities.md) for knobs that can't be combined.
+work-hours caveat, [`BENCHMARKS.md`](./part3-optimize/notes/BENCHMARKS.md) for measured numbers, and
+[`INCOMPATIBILITIES.md`](./part3-optimize/notes/INCOMPATIBILITIES.md) for knobs that can't be combined.
 
 ## How Much Does It Save?
 
@@ -130,7 +133,7 @@ Max-20x/Ultra-class subscription seat or **≈ $800/dev-month** for heavy token-
 (enterprise tiers / API keys — Pylon measured ≈ $780).
 
 At 100 developers, that is roughly **$17K/month saved vs seats** and **$77K/month saved vs
-token-metered billing**. If the scale-to-zero variant reliably stops the GPU outside work hours, the
+token-metered billing**. If the work-hours config reliably stops the GPU outside work hours, the
 self-hosted cost drops to **≈ $8/dev-month** (≈ $840/mo), raising savings to about **$19K/month vs
 seats** and **$79K/month vs token billing**. Optional spot-first capacity can lower GPU cost another
 ~43%, with interruption risk.
@@ -141,5 +144,5 @@ teams should still validate the model on their own repos and agent workflows.
 
 Break-even lands at ~3–15 developers against seats and **1–4 developers** against token-metered
 billing, depending on always-on vs work-hours and on-demand vs spot. See
-[`part3-optimize/COST-ESTIMATE.md`](./part3-optimize/COST-ESTIMATE.md) for the savings tables, token
+[`part3-optimize/notes/COST-ESTIMATE.md`](./part3-optimize/notes/COST-ESTIMATE.md) for the savings tables, token
 math, and caveats.
