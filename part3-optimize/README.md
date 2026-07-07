@@ -5,8 +5,8 @@ same model id (`qwen3.6-27b`) and the same Part 2 clients; repoint `ANYSCALE_BAS
 
 The defaults are measured on the target GPU. See [`BENCHMARKS.md`](BENCHMARKS.md) for numbers and
 [`NOTES-incompatibilities.md`](NOTES-incompatibilities.md) for knobs that cannot be combined. The only
-unmeasured default is autoscale `target_ongoing_requests`, which is intentionally conservative. For what
-the deployment costs per developer vs sending the same traffic to a commercial LLM API, see
+unmeasured default is autoscale `target_ongoing_requests`, which is intentionally conservative. For the
+cost-reduction case, including savings vs commercial seats and token-metered API billing, see
 [`COST-ESTIMATE.md`](COST-ESTIMATE.md).
 
 ## What Changes
@@ -34,7 +34,7 @@ GPU — its FP4 attention kernel is datacenter-Blackwell-only and crashes on SM1
 | `ENABLE_FP8_KV_CACHE` | `True` | Halves KV memory so the full 256K context fits. |
 | `ENABLE_CUDA_GRAPHS` | `True` | Biggest free win: ~2.87× decode on Blackwell. |
 | `ENABLE_SPEC_DECODE` | `False` | MTP gives ~1.9× decode, but loses the fast S3 loader. Opt in only if decode speed matters more than cold start. |
-| `ENABLE_PREFIX_ROUTING` | `False` | Hotspots badly on shared-prefix agent traffic. Round-robin is faster for this workload. |
+| `ENABLE_PREFIX_ROUTING` | `False` | Optional for diverse multi-user prefixes. The single-user replay data here shares the same prompts, skills, and harness context, so round-robin is the simpler default. |
 
 Direct streaming is always on because Part 2 uses the native `/v1/messages` and `/v1/responses` endpoints.
 It is enabled in `service_optimized.yaml` so the Serve controller sees it at startup. If you enable prefix
@@ -54,7 +54,7 @@ in `service_optimized.yaml` pins the `g7e` node instead.
 - `Containerfile` — `ray-llm:2.56.0` plus `runai-model-streamer`.
 - [`BENCHMARKS.md`](BENCHMARKS.md) — measured effect of each knob.
 - [`NOTES-incompatibilities.md`](NOTES-incompatibilities.md) — incompatibilities and root causes.
-- [`COST-ESTIMATE.md`](COST-ESTIMATE.md) — $/developer-month estimate vs commercial API token pricing.
+- [`COST-ESTIMATE.md`](COST-ESTIMATE.md) — savings estimate vs commercial seats and token-metered API billing.
 
 ## Deploy
 
@@ -71,7 +71,8 @@ Then update `../part2-connect-clients-direct/.env`: set `ANYSCALE_BASE_URL` to t
 the clients.
 
 Before turning on spec decode or prefix routing, read [`BENCHMARKS.md`](BENCHMARKS.md) and
-[`NOTES-incompatibilities.md`](NOTES-incompatibilities.md). Both are off by default for measured reasons.
+[`NOTES-incompatibilities.md`](NOTES-incompatibilities.md). Spec decode trades faster decode for slower cold
+starts; prefix routing is an opt-in policy for diverse multi-user prefix patterns.
 
 ## Scale to Zero Outside Work Hours
 

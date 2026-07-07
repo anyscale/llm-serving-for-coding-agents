@@ -3,8 +3,7 @@
 These measurements map to the `ENABLE_*` control panel in `serve_qwen3_6_27b_optimized.py`.
 
 Unless noted, results are from 1× RTX PRO 6000 (`g7e.4xlarge`, 96 GB, SM120), TP=1, vLLM 0.22.0
-(`ray-llm:2.56.0`). Prefix-routing tests used 2× of the same GPU. Anything not yet remeasured on the Pro
-6000 is listed in [TODO](#todo).
+(`ray-llm:2.56.0`). Anything not yet remeasured on the Pro 6000 is listed in [TODO](#todo).
 
 Note on context length: the decode/throughput numbers were measured at `max_model_len=81920` with real
 prompts up to ~73K tokens. Per-token rates are largely insensitive to the `max_model_len` cap, but treat the
@@ -21,12 +20,12 @@ Each row compares one knob off vs on, on the same hardware.
 | 3 | `ENABLE_FP8_KV_CACHE` | bf16 KV, ~3.3× concurrency at 256K | fp8 KV, full 256K | 6.53× concurrency | On |
 | 4 | `ENABLE_CUDA_GRAPHS` | Eager, 15.9 tok/s | Graphs, 45.6 tok/s | 2.87× decode | On |
 | 5 | `ENABLE_SPEC_DECODE` | Base, 45.6 tok/s | MTP, 86.4 tok/s | 1.89× decode | Off |
-| 6 | `ENABLE_PREFIX_ROUTING` | Round-robin, 7.79 s TTFT | Prefix, 301 s TTFT | 39× worse | Off |
 
 Spec decode is off because it disables the fast S3 loader on vLLM 0.22.0
-([vllm#42060](https://github.com/vllm-project/vllm/issues/42060)). Prefix routing is off because shared-prefix
-agent traffic hotspots badly under affinity routing, and the built-in router also hangs with direct streaming on
-ray-llm 2.56 ([ray#64328](https://github.com/ray-project/ray/pull/64328)). See
+([vllm#42060](https://github.com/vllm-project/vllm/issues/42060)). Prefix routing is off by default because the
+single-user replay data in this tutorial does not need replica affinity; see [Prefix Routing](#6-prefix-routing)
+for when to opt in. The built-in router also needs the ray-llm 2.57 direct-streaming fix
+([ray#64328](https://github.com/ray-project/ray/pull/64328)). See
 [`NOTES-incompatibilities.md`](NOTES-incompatibilities.md) for combinations that cannot coexist.
 
 ## Workloads
@@ -117,25 +116,16 @@ the KV cache specs`.
 
 ## 6. Prefix Routing
 
-[Prefix-aware routing](https://docs.ray.io/en/latest/serve/llm/user-guides/prefix-aware-routing.html) sends the next turn to the replica that cached the previous prefix. On shared-prefix coding
-agent traffic, it hotspots instead of helping.
+[Prefix-aware routing](https://docs.ray.io/en/latest/serve/llm/user-guides/prefix-aware-routing.html) sends the
+next turn to the replica that cached the previous prefix. It is an opt-in setting here because the benchmark
+trace is single-user coding-agent data: most requests share the same system prompts, skills, and harness
+context, so each replica's local vLLM prefix cache sees similar reusable prefixes over time. For that traffic,
+round-robin is the simpler default and avoids coupling cache affinity to replica load.
 
-| Trace | Router | TTFT mean | vs round-robin |
-|---|---|---|---|
-| 3 real sessions | Prefix, `imbalanced=5` | 712.9 s | ~263× worse |
-| 3 real sessions | Prefix, `imbalanced=1` | 260.2 s | ~96× worse |
-| 48 users + clean ~57K shared prefix | Prefix, `imbalanced=5` | 301 s | ~39× worse |
-
-Why: Claude Code users share one dominant prefix, roughly 57K tokens of a ~70K-token request. Affinity sends
-everyone to the first replica that cached it, and `imbalanced_threshold` counts queue items rather than
-their prefill cost. Round-robin spreads prefills evenly while still using vLLM's automatic per-replica prefix
-cache.
-
-Verdict: keep off for shared-prefix coding-agent traffic.
-
-Prefix routing can still help when there are many distinct, byte-stable large prefixes: multi-tenant system
-prompts, per-document RAG, or per-user memory. Measure your real traffic first, especially prefix diversity
-and request-cost spread.
+Prefix routing becomes more useful when the service handles many users with diverse byte-stable prefixes:
+different system prompts, skill sets, memory blocks, RAG documents, or agent harnesses. In that case, tune
+`imbalanced_threshold` and `match_rate_threshold` against real traffic. The goal is to improve prefix-cache
+reuse without sending too much work to one replica just because it already has a similar prefix cached.
 
 Under direct streaming, the stock router hangs on ray-llm 2.56. If this knob is enabled, the service uses
 `DirectStreamingPrefixCacheRouter` until [ray#64328](https://github.com/ray-project/ray/pull/64328) lands in

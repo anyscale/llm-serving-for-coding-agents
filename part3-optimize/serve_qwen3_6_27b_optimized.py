@@ -31,10 +31,11 @@ ENABLE_CUDA_GRAPHS = True
 #     LOADING off (vllm#42060): you trade the fast S3 cold-start for the 1.9x decode.  Default OFF.  See BENCHMARKS.md.
 ENABLE_SPEC_DECODE = False
 
-# (6) PREFIX-AWARE ROUTING — send a session's turns to the replica that cached its prefix. Measured to
-#     HOTSPOT badly (up to ~263x worse TTFT than round-robin; still ~39x even with many users + a clean
-#     shared prefix — see BENCHMARKS.md §6) — keep OFF unless you have many DISTINCT large prefixes and
-#     validate on YOUR traffic. Only matters with max_replicas > 1.
+# (6) PREFIX-AWARE ROUTING — send a session's turns to the replica that cached its prefix. Keep OFF for the
+#     single-user coding-agent trace used here: most requests share the same system prompts, skills, and
+#     harness context, so round-robin still benefits from each replica's local vLLM prefix cache. Consider
+#     enabling only for multi-user traffic with diverse byte-stable prefixes, then tune the imbalance knobs
+#     so affinity does not overload one replica. Only matters with max_replicas > 1.
 ENABLE_PREFIX_ROUTING = False
 
 # DIRECT STREAMING is REQUIRED for this demo (Parts 1 & 2 connect Claude Code / Codex / Cursor straight to
@@ -140,8 +141,10 @@ deployment_config = dict(
     max_ongoing_requests=64,
 )
 
-# (6) Prefix-aware routing (only with max_replicas > 1 AND diverse prefixes; tune imbalanced_threshold).
+# (6) Prefix-aware routing (only with max_replicas > 1 AND diverse stable prefixes).
 if ENABLE_PREFIX_ROUTING:
+    # Tune these thresholds on real traffic. Too much affinity can overload the one replica with the closest
+    # prefix cache, even when another replica has spare capacity.
     # Direct streaming is always on here, and the stock PrefixCacheAffinityRouter HANGS under it (it can't
     # read the raw body the direct-streaming ingress forwards). So use the DirectStreamingPrefixCacheRouter
     # subclass in direct_streaming_prefix_router.py, which parses that body. Upstream fix:

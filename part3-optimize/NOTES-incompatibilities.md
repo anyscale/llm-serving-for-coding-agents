@@ -39,7 +39,7 @@ ingress puts the raw body in `pending_request.kwargs["request_body"]`, but that 
 
 Options:
 
-- Use the default `RoundRobinRouter` (recommended for this workload).
+- Use the default `RoundRobinRouter` for the single-user replay data in this tutorial.
 - If you opt into prefix routing, use `DirectStreamingPrefixCacheRouter`.
 - On Ray Serve LLM 2.57 or newer, use Ray's built-in router after
   [ray#64328](https://github.com/ray-project/ray/pull/64328) lands.
@@ -60,4 +60,4 @@ This set works together and is enabled in `serve_qwen3_6_27b_optimized.py`:
 - reasoning parser (`qwen3`)
 
 The two deliberate opt-ins are `ENABLE_SPEC_DECODE` and `ENABLE_PREFIX_ROUTING`. See
-[`BENCHMARKS.md`](BENCHMARKS.md) for when either might be worth testing.
+[`BENCHMARKS.md`](BENCHMARKS.md) for the spec-decode numbers and the prefix-routing traffic-shape guidance.
