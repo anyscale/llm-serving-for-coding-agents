@@ -148,9 +148,9 @@ Work-hours mode assumes the GPU runs about 10 hours/day for 21 weekdays:
 ~$840 / ~100 developers = ~$8/dev-month
 ```
 
-The work-hours setup uses [`configs/service-work-hours.yaml`](../configs/service-work-hours.yaml),
-[`configs/schedule-work-hours-warmup.yaml`](../configs/schedule-work-hours-warmup.yaml), and
-[`scripts/warmup.sh`](../scripts/warmup.sh).
+The work-hours setup uses [`service-work-hours.yaml`](../service-work-hours.yaml),
+[`schedule-work-hours-warmup.yaml`](../schedule-work-hours-warmup.yaml), and
+[`warmup.sh`](../warmup.sh).
 
 Important caveat: replica scale-down to zero worked in testing, but the **GPU node did not always
 terminate** because the CPU router could keep the only worker type alive. Treat work-hours cost as a

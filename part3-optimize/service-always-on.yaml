@@ -4,7 +4,7 @@
 # for bursts. It uses the MIN_REPLICAS default of 1 in serve_qwen3_6_27b_optimized.py.
 #
 # Deploy from the part3-optimize/ directory (containerfile: and working_dir: resolve against the
-# CLI's CWD): anyscale service deploy -f configs/service-always-on.yaml --working-dir .
+# CLI's CWD): anyscale service deploy -f service-always-on.yaml --working-dir .
 name: qwen3-6-27b-fp8-rtxpro6000-always-on
 # Builds ray-llm + runai-model-streamer from the Containerfile at deploy time.
 # Alternative: pre-build once (`anyscale image build -f Containerfile`) and set image_uri instead.

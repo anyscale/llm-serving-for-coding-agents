@@ -136,7 +136,7 @@ ray-llm 2.57.
 
 [Direct streaming](https://docs.ray.io/en/latest/serve/llm/user-guides/direct-streaming.html) exposes `/v1/messages` for Claude Code and `/v1/responses` for Codex alongside
 `/v1/chat/completions`. It is required for this demo and is enabled by service-level env vars in
-the Part 3 service YAMLs under `configs/`, so keep it on.
+the Part 3 service YAMLs, so keep it on.
 
 ## TODO
 

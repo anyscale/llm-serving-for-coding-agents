@@ -17,7 +17,7 @@ cost-reduction case, including savings vs commercial seats and token-metered API
 | Context | FP8, 128K | FP8, full 256K |
 | Model load | HF download, ~85 s | RunAI Streamer S3→GPU, ~25 s |
 | Compile | Recompile every cold start, ~74 s | S3 torch.compile cache, ~9 s |
-| Scaling | Single replica | Autoscale 1→4, round-robin via [`configs/service-always-on.yaml`](configs/service-always-on.yaml) (or 0→4 via [`configs/service-work-hours.yaml`](configs/service-work-hours.yaml)) |
+| Scaling | Single replica | Autoscale 1→4, round-robin via [`service-always-on.yaml`](service-always-on.yaml) (or 0→4 via [`service-work-hours.yaml`](service-work-hours.yaml)) |
 
 Why RTX PRO 6000 + FP8? FP8 weights plus an FP8 256K KV cache fit comfortably on the 96 GB card, with about
 6.5× concurrency at full context and better quality than 4-bit. (Note: `nvfp4` KV cache is not usable on this
@@ -47,9 +47,8 @@ pin the `g7e` node instead.
 ## Files
 
 - `serve_qwen3_6_27b_optimized.py` — optimized app and toggle panel.
-- `configs/` — Anyscale YAML entry points:
-  `service-always-on.yaml`, `service-work-hours.yaml`, and `schedule-work-hours-warmup.yaml`.
-- `scripts/` — executable helpers such as `warmup.sh`.
+- `service-always-on.yaml`, `service-work-hours.yaml`, and `schedule-work-hours-warmup.yaml` — Anyscale entry points.
+- `warmup.sh` — weekday morning warmup helper for work-hours mode.
 - `notes/` — benchmark data, cost estimates, and compatibility notes.
 - `direct_streaming_prefix_router.py` — prefix-routing adapter for direct streaming, only used if you opt in.
 - `Containerfile` — `ray-llm:2.56.0` plus `runai-model-streamer`.
@@ -58,7 +57,7 @@ pin the `g7e` node instead.
 
 ```bash
 cd part3-optimize
-anyscale service deploy -f configs/service-always-on.yaml --working-dir .
+anyscale service deploy -f service-always-on.yaml --working-dir .
 ```
 
 For fast loading, upload the FP8 weights once (`hf download Qwen/Qwen3.6-27B-FP8`, then `aws s3 sync`) and
@@ -74,7 +73,7 @@ starts; prefix routing is an opt-in policy for diverse multi-user prefix pattern
 
 ## Work-Hours Mode
 
-The work-hours service config is [`configs/service-work-hours.yaml`](configs/service-work-hours.yaml). It is
+The work-hours service config is [`service-work-hours.yaml`](service-work-hours.yaml). It is
 the same deployment with
 `MIN_REPLICAS=0` and `min_nodes: 0`: after 30 idle minutes the replica scales away and the GPU node
 terminates, so nights and weekends cost nothing. At ~10 h/day on weekdays that is ≈ $840/mo vs
@@ -82,7 +81,7 @@ terminates, so nights and weekends cost nothing. At ~10 h/day on weekdays that i
 
 ```bash
 # from part3-optimize/ (containerfile: and working_dir: resolve against the CLI's CWD)
-anyscale service deploy -f configs/service-work-hours.yaml --working-dir .
+anyscale service deploy -f service-work-hours.yaml --working-dir .
 ```
 
 > **⚠ Validated 2026-07-06 with a caveat:** deploying this config, waking from zero (≈ 100 s with
@@ -91,21 +90,21 @@ anyscale service deploy -f configs/service-work-hours.yaml --working-dir .
 > so the cost savings were not realized. After deploying, confirm the `g7e` instance actually
 > terminates after ~35 idle minutes before counting on the work-hours numbers.
 
-Then schedule [`warmup.sh`](scripts/warmup.sh) for 7 am on weekdays so the first developer never
+Then schedule [`warmup.sh`](warmup.sh) for 7 am on weekdays so the first developer never
 waits out the cold start (node provisioning + ~25 s weight load + ~9 s compile restore):
 
 - **Anyscale scheduled job** — fill in the service URL and token in
-  [`schedule-work-hours-warmup.yaml`](configs/schedule-work-hours-warmup.yaml), then (from `part3-optimize/`)
-  `anyscale schedule apply -f configs/schedule-work-hours-warmup.yaml`.
+  [`schedule-work-hours-warmup.yaml`](schedule-work-hours-warmup.yaml), then (from `part3-optimize/`)
+  `anyscale schedule apply -f schedule-work-hours-warmup.yaml`.
 - **Any other cron** (a dev box, CI) —
-  `0 7 * * 1-5 ANYSCALE_BASE_URL=... ANYSCALE_API_KEY=... scripts/warmup.sh`;
+  `0 7 * * 1-5 ANYSCALE_BASE_URL=... ANYSCALE_API_KEY=... bash warmup.sh`;
   it is a single curl retry loop.
 
 Trade-off: an off-hours first request (late night, weekend) waits through the cold start — keep a
 commercial API key as the off-hours fallback, or use the always-on config instead.
 
 To cut the GPU rate another ~43%, uncomment `market_type: PREFER_SPOT` (and the cross-zone flag) in
-[`service-work-hours.yaml`](configs/service-work-hours.yaml) — spot-first with on-demand fallback;
+[`service-work-hours.yaml`](service-work-hours.yaml) — spot-first with on-demand fallback;
 preempted replicas recover in about the ~3-minute cold start. On-demand vs spot pricing is compared
 in [`notes/COST-ESTIMATE.md`](notes/COST-ESTIMATE.md).
 

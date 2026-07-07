@@ -126,16 +126,16 @@ if ENABLE_COMPILE_CACHE:
 # ── Deployment / autoscaling ─────────────────────────────────────────────────
 deployment_config = dict(
     autoscaling_config=dict(
-        # 1 (default) = always-on: no cold start during work hours. configs/service-work-hours.yaml
+        # 1 (default) = always-on: no cold start during work hours. service-work-hours.yaml
         # sets MIN_REPLICAS=0 (+ compute min_nodes: 0) so idle nights/weekends cost nothing — pair it
-        # with scripts/warmup.sh on a weekday-morning cron; cost math in notes/COST-ESTIMATE.md.
+        # with warmup.sh on a weekday-morning cron; cost math in notes/COST-ESTIMATE.md.
         min_replicas=int(os.environ.get("MIN_REPLICAS", "1")),
         max_replicas=4,            # scale out for peak; each replica = 1 RTX PRO 6000 node (g7e.4xlarge)
         target_ongoing_requests=8,  # CONSERVATIVE, untested on Pro 6000 — scale out early so the autoscaler
                                     # doesn't pile cold ~73K-tok prefills on one GPU (TTFT/preemption). TODO: measure
                                     # the Pro 6000 capacity cliff (notes/BENCHMARKS.md "TODO") and tune; raise toward 16 if prompts cache well.
         upscale_delay_s=30,
-        # configs/service-work-hours.yaml raises this to 1800 so a lunch-break lull doesn't trigger a
+        # service-work-hours.yaml raises this to 1800 so a lunch-break lull doesn't trigger a
         # mid-day cold start.
         downscale_delay_s=int(os.environ.get("DOWNSCALE_DELAY_S", "600")),
     ),

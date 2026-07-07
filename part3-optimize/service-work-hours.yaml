@@ -1,12 +1,12 @@
 # service-work-hours.yaml - optimized deployment for work-hours-only GPU spend.
 #
 # This is the min-replica-0 mode: idle periods scale the Serve replica to zero and allow the g7e node
-# to terminate. Pair it with scripts/warmup.sh on a weekday-morning cron
-# (configs/schedule-work-hours-warmup.yaml) so the first developer of the day does not wait out the
+# to terminate. Pair it with warmup.sh on a weekday-morning cron
+# (schedule-work-hours-warmup.yaml) so the first developer of the day does not wait out the
 # cold start.
 #
 # Deploy from the part3-optimize/ directory (containerfile: and working_dir: resolve against the
-# CLI's CWD): anyscale service deploy -f configs/service-work-hours.yaml --working-dir .
+# CLI's CWD): anyscale service deploy -f service-work-hours.yaml --working-dir .
 name: qwen3-6-27b-fp8-rtxpro6000-work-hours
 containerfile: Containerfile
 env_vars:

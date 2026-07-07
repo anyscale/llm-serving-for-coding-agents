@@ -103,7 +103,7 @@ autoscale 1→4:
 
 ```bash
 cd ../part3-optimize
-anyscale service deploy -f configs/service-always-on.yaml --working-dir .
+anyscale service deploy -f service-always-on.yaml --working-dir .
 ```
 
 Optimizations include:
@@ -113,10 +113,10 @@ Optimizations include:
 - **FP8 KV cache** — halves KV memory so the full 256K context fits.
 - **CUDA graphs** — ~2.87× decode speedup on Blackwell.
 - **Autoscale** — scales 1→4 replicas with round-robin routing.
-- **Always-on config** — [`part3-optimize/configs/service-always-on.yaml`](./part3-optimize/configs/service-always-on.yaml)
+- **Always-on config** — [`part3-optimize/service-always-on.yaml`](./part3-optimize/service-always-on.yaml)
   keeps one warm replica online for min-replica-1 service behavior.
-- **Work-hours config** — [`part3-optimize/configs/service-work-hours.yaml`](./part3-optimize/configs/service-work-hours.yaml)
-  uses min replicas 0 plus [`scripts/warmup.sh`](./part3-optimize/scripts/warmup.sh) to target
+- **Work-hours config** — [`part3-optimize/service-work-hours.yaml`](./part3-optimize/service-work-hours.yaml)
+  uses min replicas 0 plus [`warmup.sh`](./part3-optimize/warmup.sh) to target
   work-hours-only GPU spend; verify the `g7e` node actually terminates after idle before relying on
   the savings.
 
