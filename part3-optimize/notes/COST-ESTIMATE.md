@@ -12,11 +12,14 @@ This is the high-level summary. For details, see [Core Assumptions](#core-assump
 
 Self-hosting is primarily a cost-reduction play. One `g7e.4xlarge` appears to support roughly
 **24 average-length active cached sessions**, which should be treated as the per-GPU capacity unit.
-At an optimistic average-utilization upper bound of **100 registered developers/GPU**, self-hosting
-costs roughly **$30/dev-month** always-on, or **$8/dev-month** if the GPU only runs during work hours.
-For actual planning, use a more conservative base case of **~50 registered developers/GPU** until
-production telemetry confirms p95 active concurrency, context-size distribution, cache eviction
-behavior, and acceptable queueing latency.
+For planning, use **~50 registered developers/GPU** as the safe sizing number. That leaves margin for
+long prompts, heavy-tailed context histories, clustered work-hour usage, and congestion when many
+developers ask the service to prefill or decode at the same time.
+
+At that planning capacity, self-hosting costs roughly **$58/dev-month** always-on, or
+**$17/dev-month** if the GPU only runs during work hours. A 100-developer team should therefore plan
+for **2+ GPUs during busy periods**, with autoscaling adding replicas during bursts and scaling back
+down when demand falls.
 
 Commercial pricing comes in two scenarios, and the comparison should be made against both:
 
@@ -26,10 +29,10 @@ Commercial pricing comes in two scenarios, and the comparison should be made aga
    API keys or enterprise tiers past the seat cliff, real coding-agent bills land near
    $800/dev-month for active engineers. Pylon measured about $780.
 
-| Self-hosted mode | GPU cost | Cost at 100 devs/GPU | Cost at 50 devs/GPU | Savings vs $200 seats at 50 devs/GPU | Savings vs $800 token bill at 50 devs/GPU |
-|---|---:|---:|---:|---:|---:|
-| Always-on, on-demand | ~$2,900/mo | ~$29/dev-mo | ~$58/dev-mo | ~71% | ~93% |
-| Work-hours, on-demand | ~$840/mo | ~$8/dev-mo | ~$17/dev-mo | ~92% | ~98% |
+| Self-hosted mode | GPU cost | Planning cost at 50 devs/GPU | Savings vs $200 seats | Savings vs $800 token bill |
+|---|---:|---:|---:|---:|
+| Always-on, on-demand | ~$2,900/mo | ~$58/dev-mo | ~71% | ~93% |
+| Work-hours, on-demand | ~$840/mo | ~$17/dev-mo | ~92% | ~98% |
 
 Break-even is small because the GPU is a shared fixed cost:
 
@@ -48,8 +51,7 @@ Server Edition GPU, which has **96 GB GPU memory**.
 | On-demand GPU price | ~$4.00/hr |
 | Active sessions per GPU | ~24 |
 | Developer duty cycle | ~25% |
-| Base-case registered developers per GPU | ~50 |
-| Optimistic registered developers per GPU | ~100 |
+| Planning registered developers per GPU | ~50 |
 | Input tokens per turn | ~70K |
 | Output tokens per turn | ~150 |
 
@@ -61,19 +63,17 @@ That `~24` number is an instantaneous capacity estimate, not a safe team-size es
 average developer duty cycle does not imply that 100 developers can be served without contention:
 even with independent usage, 100 developers at 25% activity produces about 25 active sessions on
 average, with materially higher p95 concurrency. Real usage is also correlated around work hours,
-standups, reviews, incidents, and launch deadlines. For planning, treat **50 registered
-developers/GPU** as the base case and **100 registered developers/GPU** as optimistic upside until
-measured production telemetry proves otherwise.
+standups, reviews, incidents, and launch deadlines.
+
+For planning, treat **50 registered developers/GPU** as the capacity assumption. This deliberately
+keeps headroom for long prompts, unusually large cached histories, slow prefill bursts, and congestion
+when many developers become active at the same time.
 
 ```text
 active sessions per GPU = practical KV token capacity / average tokens per session
 (6.53 * 262,144) / (70,000 + 150) = ~24
 
-optimistic registered developers per GPU = active sessions / duty cycle
-~24 / 25% = ~100 developers
-
 cost per developer = monthly GPU cost / developers per GPU
-~$2,900 / ~100 = ~$30/dev-month
 ~$2,900 / ~50 = ~$58/dev-month
 ```
 
@@ -124,27 +124,25 @@ When the burst ends, replicas can scale back down. During nights, weekends, or l
 deployment can scale to one GPU or potentially zero GPUs if cold-start latency is acceptable.
 
 The main planning metric should therefore be **GPU replica-hours per month**, not just registered
-developers per GPU. A 100-developer team may average near one GPU in quiet periods, but can require
-2+ GPUs during peak bursts. Autoscaling preserves much of the cost advantage by adding GPUs only when
-concurrent demand requires them, but it does not change the per-GPU capacity limit.
+developers per GPU. A 100-developer team should be modeled as a 2+ GPU deployment during busy periods,
+even if it can scale down to fewer replicas during quiet periods. Autoscaling preserves much of the
+cost advantage by adding GPUs only when concurrent demand requires them, but it does not change the
+per-GPU capacity limit.
 
 ## Team Savings View
 
-The savings story still holds, especially against token-metered billing, but it is more credible as a
-sensitivity model than as a single 100-dev/GPU claim.
+The savings story still holds, especially against token-metered billing, but it is more credible when
+50 devs/GPU is the planning case.
 
 | Registered devs/GPU | Interpretation | Always-on cost/dev-mo | Work-hours cost/dev-mo |
 |---:|---|---:|---:|
 | 25 | Near-continuous or heavy usage, little multiplexing | ~$116 | ~$34 |
-| 50 | Safer planning base case | ~$58 | ~$17 |
-| 75 | Aggressive, plausible with telemetry | ~$39 | ~$11 |
-| 100 | Optimistic upper bound | ~$29 | ~$8 |
+| 50 | Planning case with headroom for long prompts and bursty usage | ~$58 | ~$17 |
 
 For a 100-developer team, the capacity assumption changes how many GPU replicas are needed:
 
 | Capacity assumption | GPUs for 100 devs | Always-on GPU cost | Savings vs $200 seats | Savings vs $800 token bill |
 |---|---:|---:|---:|---:|
-| 100 devs/GPU | 1 | ~$2.9K/mo | ~$17.1K/mo | ~$77.1K/mo |
 | 50 devs/GPU | 2 | ~$5.8K/mo | ~$14.2K/mo | ~$74.2K/mo |
 | 25 devs/GPU | 4-5 | ~$11.6K-$14.5K/mo | ~$5.5K-$8.4K/mo | ~$65.5K-$68.4K/mo |
 
@@ -169,7 +167,6 @@ Work-hours mode assumes the GPU runs about 10 hours/day for 21 weekdays:
 ```text
 10 hours/day * 21 weekdays * ~$4/hr = ~$840/month
 ~$840 / ~50 developers = ~$17/dev-month
-~$840 / ~100 developers = ~$8/dev-month optimistic upper bound
 ```
 
 The work-hours setup uses [`service-work-hours.yaml`](../service-work-hours.yaml),
@@ -192,9 +189,10 @@ can interrupt active sessions, discard KV cache, and add cold-start latency.
   but teams should still validate it on their own coding-agent workload.
 - **Capacity:** the ~24 active-session estimate is based on average context length. It should not be
   treated as an SLA capacity. Real coding-agent sessions are likely heavy-tailed: some sessions will
-  carry much larger histories than 70K tokens, reducing effective concurrency. Before committing to
-  100 developers per GPU, measure p50/p90/p95 cached tokens per session, active sessions per
-  work-hour, cache eviction rate, queueing latency, and cold-prefill frequency.
+  carry much larger histories than 70K tokens, reducing effective concurrency. The 50-developer/GPU
+  planning assumption is meant to leave room for these extreme cases. Measure p50/p90/p95 cached
+  tokens per session, active sessions per work-hour, cache eviction rate, queueing latency, and
+  cold-prefill frequency before raising the density.
 - **Autoscaling:** autoscaling reduces under-provisioning risk by adding GPU replicas during peak
   concurrency, but it does not change the per-GPU capacity limit. It also has operational caveats:
   scale-up latency, cold starts, cache loss on new replicas, routing effects, and whether idle GPU
