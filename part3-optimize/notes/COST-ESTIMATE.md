@@ -53,7 +53,6 @@ Server Edition GPU, which has **96 GB GPU memory**.
 | Developer duty cycle | ~25% |
 | Planning registered developers per GPU | ~50 |
 | Input tokens per turn | ~70K |
-| Output tokens per turn | ~150 |
 
 The `~24` active-session estimate comes from average token length: FP8 KV measured about **6.53x**
 256K-context concurrency, or roughly **1.7M cached tokens/GPU**. At `~70K` tokens per turn, that is
@@ -71,7 +70,7 @@ when many developers become active at the same time.
 
 ```text
 active sessions per GPU = practical KV token capacity / average tokens per session
-(6.53 * 262,144) / (70,000 + 150) = ~24
+(6.53 * 262,144) / 70,000 = ~24
 
 cost per developer = monthly GPU cost / developers per GPU
 ~$2,900 / ~50 = ~$58/dev-month
