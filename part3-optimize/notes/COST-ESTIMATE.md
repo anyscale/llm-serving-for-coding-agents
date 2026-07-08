@@ -3,23 +3,15 @@
 This is a rough planning estimate for the Part 3 coding-agent service. Treat the numbers as
 directional, not accounting-grade. Prices are rounded list prices from July 2026.
 
-## Bottom Line
+## Summary
+
+This is the high-level summary. For details, see [Core Assumptions](#core-assumptions),
+[API Cost](#api-cost), [Team Savings View](#team-savings-view),
+[Work-Hours Mode](#work-hours-mode), and [Caveats](#caveats).
 
 Self-hosting is primarily a cost-reduction play. At the planning capacity of about **100 developers
 per GPU**, a self-hosted `g7e.4xlarge` costs roughly **$30/dev-month** always-on, or
 **$8/dev-month** if the GPU only runs during work hours.
-
-That means a 100-developer team saves roughly:
-
-- **~$17K/month vs $200 subscription seats** with one always-on on-demand GPU.
-- **~$77K/month vs $800 token-metered billing** with one always-on on-demand GPU.
-- **~$19K/month vs seats** and **~$79K/month vs token billing** if work-hours mode reliably keeps the
-  GPU on only during work hours.
-
-The main risk is model quality: a cheaper 27B model only saves money if it can finish the same work
-with an acceptable number of extra turns. The quality case is that
-[Qwen positions Qwen3.6-27B as comparable to Claude Opus 4.5](https://qwen.ai/blog?id=qwen3.6-27b),
-but teams should still validate it on their own coding-agent workload.
 
 Commercial pricing comes in two scenarios, and the comparison should be made against both:
 
@@ -31,28 +23,24 @@ Commercial pricing comes in two scenarios, and the comparison should be made aga
 
 | Self-hosted mode | GPU cost | Cost at 100 devs | Savings vs $200 seats | Savings vs $800 token bill |
 |---|---:|---:|---:|---:|
-| Always-on, on-demand | ~$2,900/mo | ~$30/dev-mo | ~$170/dev-mo, ~85% | ~$770/dev-mo, ~96% |
-| Always-on, spot | ~$1,700/mo | ~$17/dev-mo | ~$183/dev-mo, ~92% | ~$783/dev-mo, ~98% |
-| Work-hours, on-demand | ~$840/mo | ~$8/dev-mo | ~$192/dev-mo, ~96% | ~$792/dev-mo, ~99% |
-| Work-hours, spot | ~$480/mo | ~$5/dev-mo | ~$195/dev-mo, ~98% | ~$795/dev-mo, ~99% |
+| Always-on, on-demand | ~$2,900/mo | ~$30/dev-mo | ~85% | ~96% |
+| Work-hours, on-demand | ~$840/mo | ~$8/dev-mo | ~96% | ~99% |
 
 Break-even is small because the GPU is a shared fixed cost:
 
 | Self-hosted mode | Break-even vs $200 seats | Break-even vs $800 token bill |
 |---|---:|---:|
 | Always-on, on-demand | ~15 devs | ~4 devs |
-| Always-on, spot | ~9 devs | ~2 devs |
 | Work-hours, on-demand | ~4 devs | ~1 dev |
-| Work-hours, spot | ~3 devs | ~1 dev |
 
 ## Core Assumptions
 
-The self-hosted service runs on one `g7e.4xlarge` with an RTX PRO 6000 GPU.
+The self-hosted service runs on one `g7e.4xlarge` with one NVIDIA RTX PRO 6000 Blackwell
+Server Edition GPU, which has **96 GB GPU memory**.
 
 | Input | Planning value |
 |---|---:|
 | On-demand GPU price | ~$4.00/hr |
-| Spot GPU price | ~$2.27/hr |
 | Active sessions per GPU | ~24 |
 | Developer duty cycle | ~25% |
 | Developers per GPU | ~100 |
@@ -102,9 +90,9 @@ blocks are only evicted under memory pressure.
 
 ## Team Savings View
 
-This table uses the planning assumption of about 100 developers per GPU. Self-hosted rows are
-on-demand; spot lowers them by about 43%. Negative savings mean the team is too small to beat that
-commercial baseline in that self-hosting mode.
+This table uses the planning assumption of about 100 developers per GPU and on-demand GPU pricing.
+Negative savings mean the team is too small to beat that commercial baseline in that self-hosting
+mode.
 
 | Team size | GPUs | Seats cost | Token-billing cost | Always-on GPU cost | Savings vs seats | Savings vs token bill |
 |---|---:|---:|---:|---:|---:|---:|
@@ -139,7 +127,7 @@ vs $200 seats, work-hours:  $20,000 - $840 = ~$19,200/month saved
 vs $800 tokens, work-hours: $80,000 - $840 = ~$79,200/month saved
 ```
 
-## Work-Hours and Spot
+## Work-Hours Mode
 
 Work-hours mode assumes the GPU runs about 10 hours/day for 21 weekdays:
 
@@ -156,20 +144,31 @@ Important caveat: replica scale-down to zero worked in testing, but the **GPU no
 terminate** because the CPU router could keep the only worker type alive. Treat work-hours cost as a
 target until the cluster nodes page confirms the `g7e` node terminates after about 35 idle minutes.
 
-Spot lowers GPU cost by about **43%** in `us-west-2`. The work-hours config can opt into
-`market_type: PREFER_SPOT`, which falls back to on-demand when spot capacity is tight. The trade-off is
-interruption: a spot preemption can add a few minutes of recovery latency.
+Spot pricing is intentionally excluded from this estimate. It can be useful for experiments or
+interruptible batch workloads, but preemption is a poor fit for stable interactive serving because it
+can interrupt active sessions, discard KV cache, and add cold-start latency.
 
 ## Caveats
 
 - **Model quality:** Qwen compares Qwen3.6-27B with Claude Opus 4.5, but real savings depend on whether
-  it completes the same coding-agent work with acceptable extra turns.
+  it completes the same coding-agent work with acceptable extra turns. The quality case is that
+[Qwen positions Qwen3.6-27B as comparable to Claude Opus 4.5](https://qwen.ai/blog?id=qwen3.6-27b),
+but teams should still validate it on their own coding-agent workload.
 - **Duty cycle:** heavier usage pushes self-hosted cost toward ~$120/dev-month always-on because one
   GPU supports closer to 24 continuously active sessions, not ~100 bursty developers.
-- **Cache expiry:** every pause longer than about 5 minutes can trigger a full-context cache write on
-  token-metered APIs.
+- **GPU choice:** these estimates are benchmarked for `g7e.4xlarge`, which has one NVIDIA RTX PRO 6000
+  Blackwell Server Edition GPU with 96 GB GPU memory. Redo the benchmark before applying the same math
+  to other GPUs. For larger teams or heavier concurrent usage, higher-end GPUs such as B200 or B300 may
+  be a better fit; they can support larger KV capacity and features such as NVFP4 KV cache, which can
+  serve more concurrent requests and more users per GPU.
+- **Cache behavior:** Anthropic-style token-metered APIs can expire prompt-cache entries after about
+  5 minutes by default, causing the next request to pay for another full-context cache write. In
+  vLLM/Ray Serve LLM, prefix/KV cache is instead tied to live replica memory and routing; it can be
+  lost after replica restarts, scale-to-zero, memory pressure, or routing a request to a different
+  replica.
 - **Work-hours mode:** savings depend on the GPU node actually terminating.
-- **Spot capacity:** spot prices and availability vary.
+- **Spot capacity:** spot instances are not included because preemption can make interactive serving
+  unreliable.
 
 ## Sources
 
