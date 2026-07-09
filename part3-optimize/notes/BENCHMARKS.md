@@ -4,7 +4,7 @@ These measurements map to the `ENABLE_*` control panel in
 [`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py).
 
 Unless noted, results are from 1× RTX PRO 6000 (`g7e.4xlarge`, 96 GB, SM120), TP=1, vLLM 0.22.0
-(`ray-llm:2.56.0`). Anything not yet remeasured on the Pro 6000 is listed in [TODO](#todo).
+(`ray-llm:2.56.0`).
 
 Note on context length: the decode/throughput numbers were measured at `max_model_len=81920` with real
 prompts up to ~73K tokens. Per-token rates are largely insensitive to the `max_model_len` cap, but treat the
@@ -143,12 +143,3 @@ ray-llm 2.57.
 [Direct streaming](https://docs.ray.io/en/latest/serve/llm/user-guides/direct-streaming.html) exposes `/v1/messages` for Claude Code and `/v1/responses` for Codex alongside
 `/v1/chat/completions`. It is required for this demo and is enabled by service-level env vars in
 the Part 3 service YAMLs, so keep it on.
-
-## TODO
-
-Measure the spec-decode concurrency curve on RTX PRO 6000: sweep concurrency, compare base vs MTP, and find
-where throughput peaks or KV preemption starts. Use that to tune `autoscaling_config.target_ongoing_requests`,
-which is currently a conservative untested `8`.
-
-Raw per-run JSON and load-test harnesses (`serve_bench_router_rtx.py`, `ds_bench_agent*.py`,
-`gen_fair_trace.py`) live in the Anyscale build workspace, not this repo.
