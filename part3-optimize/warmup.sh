@@ -2,7 +2,7 @@
 # warmup.sh - wake the work-hours service before the workday.
 #
 # Sends one tiny completion and retries until the service answers. A cold start from zero =
-# g7e node provisioning (minutes) + ~25 s weight load + ~9 s compile restore, so the default
+# g7e node provisioning (minutes) + ~85 s HF weight load + ~9 s compile restore, so the default
 # budget is 15 minutes (override with WARMUP_TIMEOUT_S).
 #
 # Reads the same variables as part2-connect-clients-direct/.env:

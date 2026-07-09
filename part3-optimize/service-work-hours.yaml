@@ -26,7 +26,7 @@ compute_config:
       min_nodes: 0                 # let the GPU node terminate when the deployment sits at 0 replicas
       max_nodes: 4                 # autoscale headroom (matches max_replicas=4)
       # Spot cuts the GPU rate ~43% (notes/COST-ESTIMATE.md). Uncomment for spot-first with on-demand
-      # fallback; preempted replicas restart on a fresh node (~3 min with the fast-start work).
+      # fallback; preempted replicas restart on a fresh node after the usual cold start.
       # market_type: PREFER_SPOT
 working_dir: .
 applications:

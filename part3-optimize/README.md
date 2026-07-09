@@ -15,8 +15,9 @@ cost-reduction case, including savings vs commercial seats and token-metered API
 |---|---|---|
 | GPU | 4× L4, TP=4 | 1× RTX PRO 6000 96 GB, TP=1 (`g7e.4xlarge`) |
 | Context | FP8, 128K | FP8, full 256K |
-| Model load | HF download, ~85 s | RunAI Streamer S3→GPU, ~25 s |
+| Model load | HF download, ~85 s | HF download, ~85 s by default; optional RunAI Streamer S3→GPU, ~25 s |
 | Compile | Recompile every cold start, ~74 s | S3 torch.compile cache, ~9 s |
+| Decode | CUDA graphs only | CUDA graphs + MTP speculative decoding, ~1.9× faster decode |
 | Scaling | Single replica | Autoscale 1→4, round-robin via [`service-always-on.yaml`](service-always-on.yaml) (or 0→4 via [`service-work-hours.yaml`](service-work-hours.yaml)) |
 
 Why RTX PRO 6000 + FP8? FP8 weights plus an FP8 256K KV cache fit comfortably on the 96 GB card, with about
@@ -29,11 +30,11 @@ GPU — its FP4 attention kernel is datacenter-Blackwell-only and crashes on SM1
 
 | Knob | Default | Why |
 |---|---|---|
-| `ENABLE_FAST_MODEL_LOADING` | `True` | Streams weights from S3, cutting load time from ~85 s to ~25 s. Auto-disabled when spec decode is on. |
+| `ENABLE_FAST_MODEL_LOADING` | `False` | Optional RunAI Streamer path for cold-start-focused deployments. Leave off when spec decode is on. |
 | `ENABLE_COMPILE_CACHE` | `True` | Restores prebuilt torch.compile caches, cutting compile from ~74.5 s to ~8.8 s. |
 | `ENABLE_FP8_KV_CACHE` | `True` | Halves KV memory so the full 256K context fits. |
 | `ENABLE_CUDA_GRAPHS` | `True` | Biggest free win: ~2.87× decode on Blackwell. |
-| `ENABLE_SPEC_DECODE` | `False` | MTP gives ~1.9× decode, but loses the fast S3 loader. Opt in only if decode speed matters more than cold start. |
+| `ENABLE_SPEC_DECODE` | `True` | MTP gives ~1.9× decode on the coding-agent replay. This is the default because agent work benefits more from lower TPOT than from a faster cold weight load. |
 | `ENABLE_PREFIX_ROUTING` | `False` | Optional for diverse multi-user prefixes. The single-user replay data here shares the same prompts, skills, and harness context, so round-robin is the simpler default. |
 
 Direct streaming is always on because Part 2 uses the native `/v1/messages` and `/v1/responses` endpoints.
@@ -60,16 +61,19 @@ cd part3-optimize
 anyscale service deploy -f service-always-on.yaml --working-dir .
 ```
 
-For fast loading, upload the FP8 weights once (`hf download Qwen/Qwen3.6-27B-FP8`, then `aws s3 sync`) and
-point `model_source` at that `s3://...` path. To skip S3, set `ENABLE_FAST_MODEL_LOADING=False`; the other
-optimizations still work.
+The default uses the Hugging Face loader so MTP speculative decoding can stay on. If your priority is
+cold-start time instead of decode speed, use the commented fast-loading recipe in
+[`serve_qwen3_6_27b_optimized.py`](serve_qwen3_6_27b_optimized.py): set `ENABLE_SPEC_DECODE=False` and
+`ENABLE_FAST_MODEL_LOADING=True`, upload the FP8 weights once (`hf download Qwen/Qwen3.6-27B-FP8`, then
+`aws s3 sync`), and point `S3_WEIGHTS` at that `s3://...` path.
 
 Then update `../part2-connect-clients-direct/.env`: set `ANYSCALE_BASE_URL` to this service URL and relaunch
 the clients.
 
-Before turning on spec decode or prefix routing, read [`notes/BENCHMARKS.md`](notes/BENCHMARKS.md) and
-[`notes/INCOMPATIBILITIES.md`](notes/INCOMPATIBILITIES.md). Spec decode trades faster decode for slower cold
-starts; prefix routing is an opt-in policy for diverse multi-user prefix patterns.
+Before turning off spec decode for fast loading, or before enabling prefix routing, read
+[`notes/BENCHMARKS.md`](notes/BENCHMARKS.md) and
+[`notes/INCOMPATIBILITIES.md`](notes/INCOMPATIBILITIES.md). Spec decode trades slower cold starts for faster
+decode during coding-agent turns; prefix routing is an opt-in policy for diverse multi-user prefix patterns.
 
 ## Work-Hours Mode
 
@@ -91,7 +95,7 @@ anyscale service deploy -f service-work-hours.yaml --working-dir .
 > terminates after ~35 idle minutes before counting on the work-hours numbers.
 
 Then schedule [`warmup.sh`](warmup.sh) for 7 am on weekdays so the first developer never
-waits out the cold start (node provisioning + ~25 s weight load + ~9 s compile restore):
+waits out the cold start (node provisioning + ~85 s HF weight load + ~9 s compile restore by default):
 
 - **Anyscale scheduled job** — fill in the service URL and token in
   [`schedule-work-hours-warmup.yaml`](schedule-work-hours-warmup.yaml), then (from `part3-optimize/`)

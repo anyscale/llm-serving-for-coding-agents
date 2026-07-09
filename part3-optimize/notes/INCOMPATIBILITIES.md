@@ -24,8 +24,8 @@ does not resolve it in end-to-end testing.
 
 Choose one:
 
-- Keep RunAI Streamer for faster cold starts.
-- Enable MTP for ~1.89× faster decode and accept the slower HF loader.
+- Default: enable MTP for ~1.89× faster decode and accept the slower HF loader.
+- Optional cold-start path: keep RunAI Streamer for faster cold starts and turn MTP off.
 
 The control panel automatically disables `ENABLE_FAST_MODEL_LOADING` when `ENABLE_SPEC_DECODE=True`.
 
@@ -52,14 +52,15 @@ In this tutorial, direct streaming is always on. That is why prefix routing, whe
 This set works together and is enabled in
 [`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py):
 
-- RunAI Streamer
 - torch.compile cache
 - FP8 KV cache
 - CUDA graphs
+- MTP speculative decoding (`qwen3_next_mtp`)
 - autoscale
 - direct streaming
 - tool calling (`qwen3_coder`)
 - reasoning parser (`qwen3`)
 
-The two deliberate opt-ins are `ENABLE_SPEC_DECODE` and `ENABLE_PREFIX_ROUTING`. See
-[`BENCHMARKS.md`](BENCHMARKS.md) for the spec-decode numbers and the prefix-routing traffic-shape guidance.
+The deliberate opt-ins are `ENABLE_FAST_MODEL_LOADING` and `ENABLE_PREFIX_ROUTING`. Fast loading is useful
+when cold-start time matters more than decode speed; prefix routing depends on traffic shape. See
+[`BENCHMARKS.md`](BENCHMARKS.md) for the spec-decode numbers and the prefix-routing guidance.
