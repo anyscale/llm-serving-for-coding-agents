@@ -1,0 +1,11 @@
+# Project-local Codex config — the analog to this dir's .mcp.json (Claude Code).
+# Codex discovers .codex/config.toml relative to the dir you launch `codex` from
+# (trusted projects only). Launch codex from this dir to pick it up.
+
+# Local (stdio) Brave Search MCP server — same package/args as .mcp.json.
+# env_vars forwards BRAVE_API_KEY from your shell, so the key stays out of the file
+# (the TOML analog to "${BRAVE_API_KEY}" interpolation in .mcp.json).
+[mcp_servers.brave-search]
+command = "npx"
+args = ["-y", "@brave/brave-search-mcp-server", "--transport", "stdio"]
+env_vars = ["BRAVE_API_KEY"]
