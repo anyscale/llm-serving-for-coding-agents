@@ -35,8 +35,9 @@ export WORKSPACE_API_KEY="local"
 echo "codex-workspace: Codex -> ${MODEL} @ ${BASE}/responses (workspace via localhost tunnel)" >&2
 
 # Feature disables keep Codex to plain function tools; web_search/image_gen/etc. would hit routes
-# the custom provider doesn't serve. (Brave web search comes via MCP instead — see .codex/config.toml.)
-# Your ~/.codex auth/trust are untouched.
+# the custom provider doesn't serve. NOTE: local MCP tools (.codex/config.toml's brave-search) do NOT
+# dispatch on Codex against a custom model — they return "unsupported call"; use Claude Code for MCP.
+# Upstream bug: https://github.com/openai/codex/issues/26977 . Your ~/.codex auth/trust are untouched.
 exec codex \
   -c model="${MODEL}" \
   -c model_provider="${PROVIDER}" \
