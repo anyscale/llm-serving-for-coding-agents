@@ -106,13 +106,16 @@ cd ../part3-optimize
 anyscale service deploy -f service-always-on.yaml --working-dir .
 ```
 
-Optimizations include:
+Measured performance gains include:
 
-- **RunAI Streamer** — loads weights from S3 directly to GPU (~25 s vs ~85 s).
-- **Torch.compile cache** — restores prebuilt caches from S3 (~8.8 s vs ~74.5 s).
-- **FP8 KV cache** — halves KV memory so the full 256K context fits.
-- **CUDA graphs** — ~2.87× decode speedup on Blackwell.
-- **Autoscale** — scales 1→4 replicas with round-robin routing.
+- **RunAI Streamer** — reduces cold weight-load time **3.4×**, from ~85 s to ~25 s.
+- **Torch.compile cache** — reduces compile startup time **8.5×**, from 74.5 s to 8.8 s.
+- **FP8 KV cache** — doubles 256K-context KV concurrency, from ~3.27× to 6.53×.
+- **CUDA graphs** — improves decode throughput **2.87×**, from 15.9 tok/s to 45.6 tok/s.
+- **Autoscale** — grows serving capacity from 1 to 4 replicas with round-robin routing.
+
+Deployment options include:
+
 - **Always-on config** — [`part3-optimize/service-always-on.yaml`](./part3-optimize/service-always-on.yaml)
   keeps one warm replica online for min-replica-1 service behavior.
 - **Work-hours config** — [`part3-optimize/service-work-hours.yaml`](./part3-optimize/service-work-hours.yaml)
@@ -127,22 +130,33 @@ work-hours caveat, [`BENCHMARKS.md`](./part3-optimize/notes/BENCHMARKS.md) for m
 
 ## How Much Does It Save?
 
-Rule of thumb: one RTX PRO 6000 serves ~100 developers with realistic agent usage. Always-on
-self-hosting costs **≈ $30/dev-month** (≈ $2,900/mo), compared with **≈ $200/dev-month** for a
-Max-20x/Ultra-class subscription seat or **≈ $800/dev-month** for heavy token-metered usage
-(enterprise tiers / API keys — Pylon measured ≈ $780).
+The simple planning number is **~50 registered developers per RTX PRO 6000 GPU**. The GPU can hold
+roughly **24 average-length active cached sessions** at once, and the lower planning number leaves
+room for long prompts, work-hour spikes, and several developers asking the model to work at the same
+time.
 
-At 100 developers, that is roughly **$17K/month saved vs seats** and **$77K/month saved vs
-token-metered billing**. If the work-hours config reliably stops the GPU outside work hours, the
-self-hosted cost drops to **≈ $8/dev-month** (≈ $840/mo), raising savings to about **$19K/month vs
-seats** and **$79K/month vs token billing**. Optional spot-first capacity can lower GPU cost another
-~43%, with interruption risk.
+On that sizing, always-on self-hosting is about **$58 per developer-month**:
 
-The savings assume the model is good enough for the same coding-agent work. The quality case is that
-[Qwen's launch post compares Qwen3.6-27B with Claude Opus 4.5](https://qwen.ai/blog?id=qwen3.6-27b);
-teams should still validate the model on their own repos and agent workflows.
+- **Self-hosted:** about **$2,900/month per GPU**, or **$58/dev-month** at 50 developers/GPU.
+- **Subscription seats:** about **$200/dev-month** for Max-20x/Ultra-class plans.
+- **Token-metered usage:** about **$800/dev-month** for heavy API or enterprise-tier usage; Pylon
+  measured about **$780/dev-month**.
 
-Break-even lands at ~3–15 developers against seats and **1–4 developers** against token-metered
-billing, depending on always-on vs work-hours and on-demand vs spot. See
-[`part3-optimize/notes/COST-ESTIMATE.md`](./part3-optimize/notes/COST-ESTIMATE.md) for the savings tables, token
-math, and caveats.
+For a 100-developer team, plan on **2+ GPUs during busy periods**. The always-on base case is about
+**$5.8K/month**, compared with **$20K/month** for seats or **$80K/month** for token-metered billing.
+That works out to roughly **$14.2K/month saved vs seats** and **$74.2K/month saved vs token billing**.
+
+Work-hours mode can be cheaper if the GPU nodes really shut down outside the workday. In that case,
+the target is about **$840/month per GPU**, or **$17/dev-month** at 50 developers/GPU. For the same
+100-developer planning case, that is about **$18.3K/month saved vs seats** and **$78.3K/month saved
+vs token billing**.
+
+The break-even point is small because the GPU is a shared fixed cost: about **15 developers** versus
+subscription seats for always-on, about **4 developers** versus seats for work-hours, and **1–4
+developers** versus token-metered billing.
+
+These savings only matter if the model is good enough for the same coding-agent work. The quality
+case is that [Qwen's launch post compares Qwen3.6-27B with Claude Opus 4.5](https://qwen.ai/blog?id=qwen3.6-27b),
+but teams should still validate it on their own repos and workflows. See
+[`part3-optimize/notes/COST-ESTIMATE.md`](./part3-optimize/notes/COST-ESTIMATE.md) for the full
+savings tables, token math, and caveats.
