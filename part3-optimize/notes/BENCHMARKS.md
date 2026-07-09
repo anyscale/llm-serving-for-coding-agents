@@ -16,13 +16,15 @@ Each row compares one knob off vs on, on the same hardware.
 
 | # | Knob | Off | On | Result | Default |
 |---|---|---|---|---|---|
-| 1 | `ENABLE_FAST_MODEL_LOADING` | HF download, ~85 s | RunAI Streamer, ~25 s | 3.4× faster load | On |
+| 1 | `ENABLE_FAST_MODEL_LOADING` | HF download, ~85 s | RunAI Streamer, ~25 s | 3.4× faster load | Off |
 | 2 | `ENABLE_COMPILE_CACHE` | Recompile, 74.5 s | Prebuilt cache, 8.8 s | 8.5× faster compile | On |
 | 3 | `ENABLE_FP8_KV_CACHE` | bf16 KV, ~3.3× concurrency at 256K | fp8 KV, full 256K | 6.53× concurrency | On |
 | 4 | `ENABLE_CUDA_GRAPHS` | Eager, 15.9 tok/s | Graphs, 45.6 tok/s | 2.87× decode | On |
-| 5 | `ENABLE_SPEC_DECODE` | Base, 45.6 tok/s | MTP, 86.4 tok/s | 1.89× decode | Off |
+| 5 | `ENABLE_SPEC_DECODE` | Base, 45.6 tok/s | MTP, 86.4 tok/s | 1.89× decode | On |
 
-Spec decode is off because it disables the fast S3 loader on vLLM 0.22.0
+Spec decode is on by default because the tutorial targets coding-agent traffic, where lower TPOT during
+multi-token generation matters more than shaving about a minute from cold weight load. Fast model loading is
+kept as an opt-in because RunAI Streamer and MTP cannot currently coexist on vLLM 0.22.0
 ([vllm#42060](https://github.com/vllm-project/vllm/issues/42060)). Prefix routing is off by default because the
 single-user replay data in this tutorial does not need replica affinity; see [Prefix Routing](#6-prefix-routing)
 for when to opt in. The built-in router also needs the ray-llm 2.57 direct-streaming fix
@@ -45,9 +47,11 @@ for when to opt in. The built-in router also needs the ray-llm 2.57 direct-strea
 | HF download | ~85 s |
 | RunAI Streamer | ~25 s |
 
-Verdict: keep on. It cannot be combined with MTP spec decode because the drafter reload path fails with the
-RunAI loader ([vllm#42060](https://github.com/vllm-project/vllm/issues/42060)). The control panel turns this
-off automatically when spec decode is enabled.
+Verdict: keep off for the default coding-agent deployment because MTP spec decode is more important for
+interactive generation latency. Turn RunAI Streamer on only for cold-start-focused deployments. It cannot be
+combined with MTP spec decode because the drafter reload path fails with the RunAI loader
+([vllm#42060](https://github.com/vllm-project/vllm/issues/42060)); the control panel turns fast loading off
+automatically when spec decode is enabled.
 
 ## 2. Compile Cache
 
@@ -93,7 +97,8 @@ Verdict: keep on. This is the largest free speedup; turn it off only for debuggi
 ## 5. Speculative Decoding
 
 [MTP (Multi-Token Prediction)](https://docs.vllm.ai/en/stable/features/speculative_decoding/mtp/) (`qwen3_next_mtp`) is coherent on Blackwell and improves decode from 45.6 to 86.4 tok/s on real agent
-prompts. It is off by default because it requires the HF loader and gives up the ~60 s RunAI cold-start win.
+prompts. It is on by default because coding-agent sessions benefit more from lower TPOT during active work
+than from the ~60 s RunAI cold-start win.
 
 `num_speculative_tokens` sweep on real session replay, concurrency 8, 60 s, MTP + fp8 KV + CUDA graphs,
 `max_model_len=81920`:
@@ -104,13 +109,14 @@ prompts. It is off by default because it requires the HF loader and gives up the
 | 3 | 99 | 0.72 | 264.2 ms | 2.64 s | +24% tok/s, +44% turns/s, -19% TPOT |
 | 4 | 74 | 0.55 | 340.5 ms | 4.01 s | Regresses below 2 |
 
-Verdict: keep off unless decode speed matters more than cold-start time. If you turn it on, use
-`num_speculative_tokens=3`. All three values served the real ~73K-token prompts with 0 errors; the vLLM
+Verdict: keep on for coding-agent use cases and use `num_speculative_tokens=3`. All three values served the
+real ~73K-token prompts with 0 errors; the vLLM
 0.19.1 long-context crash ([#40756](https://github.com/vllm-project/vllm/issues/40756)) did not reproduce
 on 0.22.
 
-Agent traffic is often prefill-heavy: 20K–74K-token prompts with short outputs. That leaves less decode for
-MTP to accelerate, especially on large tool-use turns.
+Agent traffic is often prefill-heavy: 20K–74K-token prompts with short outputs. That means MTP will not erase
+prefill latency on large tool-use turns, but it still improves TPOT and turns/s on the measured coding-agent
+replay.
 
 Also tested: KV-cache offload with LMCache still fails with `Hybrid KV cache manager ... failed to convert
 the KV cache specs`.

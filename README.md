@@ -98,7 +98,7 @@ You can also run Codex with `./run-codex-direct.sh`. For Cursor, see
 ### 5. (Optional) Deploy the cost-optimized service
 
 The Part 1 deployment uses 4× L4 GPUs. Part 3 optimizes the service for a single **RTX PRO 6000 96 GB**
-(`g7e.4xlarge`) GPU with TP=1, FP8 weights, FP8 KV cache, full 256K context, faster cold starts, and
+(`g7e.4xlarge`) GPU with TP=1, FP8 weights, FP8 KV cache, full 256K context, MTP speculative decoding, and
 autoscale 1→4:
 
 ```bash
@@ -106,9 +106,10 @@ cd ../part3-optimize
 anyscale service deploy -f service-always-on.yaml --working-dir .
 ```
 
-Measured performance gains include:
+Measured performance gains and options include:
 
-- **RunAI Streamer** — reduces cold weight-load time **3.4×**, from ~85 s to ~25 s.
+- **MTP speculative decoding** — default for coding-agent traffic; improves decode **1.89×**, from 45.6 tok/s to 86.4 tok/s.
+- **RunAI Streamer** — optional cold-start path; reduces cold weight-load time **3.4×**, from ~85 s to ~25 s, but cannot be combined with MTP on vLLM 0.22.0.
 - **Torch.compile cache** — reduces compile startup time **8.5×**, from 74.5 s to 8.8 s.
 - **FP8 KV cache** — doubles 256K-context KV concurrency, from ~3.27× to 6.53×.
 - **CUDA graphs** — improves decode throughput **2.87×**, from 15.9 tok/s to 45.6 tok/s.

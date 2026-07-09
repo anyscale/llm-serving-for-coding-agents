@@ -2,18 +2,24 @@
 #
 # OPTIMIZED deployment for 1x NVIDIA RTX PRO 6000 (96 GB Blackwell, AWS g7e.4xlarge), TP=1.
 # Every optimization is a toggle in the CONTROL PANEL below — flip each ON/OFF to see its effect.
-# The defaults are the validated optimized setup: FP8 weights + FP8 KV + full 256K context (6.53×
-# concurrency), CUDA graphs, fast S3 model loading, and the prebuilt compile cache.
+# The defaults are the validated coding-agent setup: FP8 weights + FP8 KV + full 256K context (6.53×
+# concurrency), CUDA graphs, MTP speculative decoding, and the prebuilt compile cache. Fast S3 model
+# loading is kept below as an opt-in cold-start alternative, but it is not the default because it conflicts
+# with MTP on vLLM 0.22.0.
 # Full measurements + the "knobs that can't be combined" matrix:
 # notes/BENCHMARKS.md / notes/INCOMPATIBILITIES.md.
 
 # ════════════════════════════════ OPTIMIZATION CONTROL PANEL ════════════════════════════════
 # Flip each ON/OFF. Mutually-exclusive combos are flagged with ⚠ (and enforced by a guard below).
 
-# (1) FAST MODEL LOADING — RunAI Streamer streams FP8 weights S3 -> GPU (~85s -> ~25s cold start).
+# (1) FAST MODEL LOADING — optional cold-start path, not the coding-agent default.
+#     RunAI Streamer streams FP8 weights S3 -> GPU (~85s -> ~25s cold start).
 #     Needs runai-model-streamer in the image (Containerfile) + cluster S3 read access.
-#     ⚠ Mutually exclusive with ENABLE_SPEC_DECODE (vllm#42060).  OFF -> plain Hugging Face download.
-ENABLE_FAST_MODEL_LOADING = True
+#     ⚠ Mutually exclusive with ENABLE_SPEC_DECODE (vllm#42060). To opt into fast loading instead of
+#     MTP decode speed, set:
+#       ENABLE_SPEC_DECODE = False
+#       ENABLE_FAST_MODEL_LOADING = True
+ENABLE_FAST_MODEL_LOADING = False
 
 # (2) COMPILE CACHE — download the prebuilt inductor + AOT torch.compile caches from S3 so a cold replica
 #     skips the whole compile (validated 74.5s -> 8.8s).  OFF -> each fresh replica compiles cold.
@@ -27,10 +33,11 @@ ENABLE_FP8_KV_CACHE = True
 #     OFF -> enforce_eager=True (only to debug, or to fit spec-decode on a small GPU; see notes/).
 ENABLE_CUDA_GRAPHS = True
 
-# (5) SPECULATIVE DECODING (MTP) — ~1.9x decode on RTX PRO 6000, coherent output (the #40880
-#     degenerate-output bug does NOT occur on Blackwell).  ⚠ Needs the HF loader, so it turns FAST MODEL
-#     LOADING off (vllm#42060): you trade the fast S3 cold-start for the 1.9x decode.  Default OFF.  See notes/BENCHMARKS.md.
-ENABLE_SPEC_DECODE = False
+# (5) SPECULATIVE DECODING (MTP) — default ON for coding-agent traffic.
+#     ~1.9x decode on RTX PRO 6000, coherent output (the #40880 degenerate-output bug does NOT occur on
+#     Blackwell). ⚠ Needs the HF loader, so it turns FAST MODEL LOADING off (vllm#42060): you trade the
+#     fast S3 cold-start for faster multi-token generation during agent work. See notes/BENCHMARKS.md.
+ENABLE_SPEC_DECODE = True
 
 # (6) PREFIX-AWARE ROUTING — send a session's turns to the replica that cached its prefix. Keep OFF for the
 #     single-user coding-agent trace used here: most requests share the same system prompts, skills, and
