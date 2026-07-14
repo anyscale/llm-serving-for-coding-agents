@@ -45,15 +45,16 @@
 # Safe here because there's no custom request router: direct streaming conflicts with
 # the stock PrefixCacheAffinityRouter, but the single-replica default RoundRobinRouter
 # used here is fine.
-from ray.serve.llm import LLMConfig, build_openai_app, CloudMirrorConfig
+from ray.serve.llm import LLMConfig, build_openai_app
 
 llm_config = LLMConfig(
     model_loading_config=dict(
         model_id="qwen3.6-27b",
-        # Load weights from an S3 mirror instead of Hugging Face — avoids HF rate limits when many people
-        # spin up the model at once (e.g. a workshop). Plain cloud-mirror download; stock image, no RunAI
-        # streamer (Part 3's streaming loader is the fast version). TODO: point bucket_uri at your S3 weights.
-        model_source=CloudMirrorConfig(bucket_uri="s3://YOUR-BUCKET/Qwen3.6-27B-FP8/"),
+        # Load weights from S3 instead of Hugging Face — avoids HF rate limits when many people spin up the
+        # model at once (e.g. a workshop). A remote s3:// model_source is auto-downloaded to local before the
+        # engine loads it (stock image, no RunAI streamer — that's Part 3's fast streaming version).
+        # TODO: point this at your S3 copy of the FP8 weights.
+        model_source="s3://YOUR-BUCKET/Qwen3.6-27B-FP8/",
     ),
     accelerator_type="L4",
     deployment_config=dict(
