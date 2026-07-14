@@ -18,7 +18,7 @@
 | Speculative decoding | OFF |
 
 Also required:
-- **Load weights from S3, not Hugging Face**: set `model_source` to your `s3://…/Qwen3.6-27B-FP8/` path — Ray Serve LLM auto-downloads a remote `s3://` source to local before loading. Avoids HF rate limits when many people deploy at once; works with the stock image (no RunAI streamer; the cluster needs S3 read access).
+- **Load weights from S3, not Hugging Face**: `model_source="s3://llm-guide/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/"` — Ray Serve LLM auto-downloads a remote `s3://` source to local before loading. Avoids HF rate limits when many people deploy at once; works with the stock image (no RunAI streamer; cluster needs S3 read access).
 - Direct streaming (one endpoint serving `/v1/chat/completions`, `/v1/messages`, `/v1/responses`): set `RAY_SERVE_ENABLE_HA_PROXY=1` and `RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1` as service-level `env_vars` (NOT `runtime_env`).
 - Image: stock `anyscale/ray-llm:2.56.0-py312-cu130` (no Containerfile).
 - Keep 4× L4 / TP=4 — do not substitute a bigger GPU.

@@ -56,9 +56,7 @@ from ray.serve.llm import LLMConfig, build_openai_app
 # ── Fixed for this deployment ────────────────────────────────────────────────
 MODEL_ID   = "qwen3.6-27b"
 HF_SOURCE  = "Qwen/Qwen3.6-27B-FP8"                                          # plain HF download
-# TODO: point S3_WEIGHTS at your S3 copy of the FP8 weights (used by RunAI Streamer when
-# ENABLE_FAST_MODEL_LOADING=True; otherwise the plain HF_SOURCE download is used). See the README.
-S3_WEIGHTS = "s3://YOUR-BUCKET/Qwen3.6-27B-FP8/"                             # for RunAI Streamer — fill in
+S3_WEIGHTS = "s3://llm-guide/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/"    # for RunAI Streamer
 
 # Compile-cache locations (used only when ENABLE_COMPILE_CACHE). The S3 PREFIXES ENCODE the exact stack a
 # torch.compile cache is keyed to (vLLM version + GPU arch + flags); these were rebuilt + validated

@@ -3,8 +3,8 @@
 Goal: get a working OpenAI-compatible endpoint with the **least** configuration. It's deliberately
 un-optimized — the point is to prove the model serves and to give you a baseline to optimize later.
 
-**What "naive" means here:** 4× L4 (`g6.12xlarge`, TP=4), single replica, weights pulled from an **S3 mirror** on every cold start (a plain full download — Part 3
-adds the fast streaming loader), no compile cache, no autoscaling, no speculative/routing tricks.
+**What "naive" means here:** 4× L4 (`g6.12xlarge`, TP=4), single replica, weights downloaded from remote storage (could also be huggingface) on every cold start,
+no compile cache, no autoscaling, no speculative/routing tricks.
 It works; it's just the wrong shape for a team (≈ one concurrent user, slow cold start). **We use 4× L4
 here because that's the GPU shape available for the Ray Summit training session** — not because it's optimal.
 
@@ -40,9 +40,8 @@ export ANYSCALE_API_KEY="your-token"
 python client.py        # sends a chat completion, prints the reply
 ```
 
-The first call after deploy/idle **cold-starts** for ~2–4 min (node provision + ~85s S3 weight
-download + compile). Loading from an S3 mirror (not Hugging Face) avoids HF rate limits when many people
-deploy at once; the download time itself is what an optimized deployment (fast S3 loader + compile cache) removes.
+The first call after deploy/idle **cold-starts** for ~2–4 min (node provision + ~85s HF weight
+download + compile). That slowness is what an optimized deployment (fast S3 loader + compile cache) removes.
 
 ## Native multi-API endpoint (direct streaming)
 
