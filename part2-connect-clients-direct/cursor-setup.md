@@ -1,18 +1,22 @@
-# Connect Cursor to `qwen3.6-27b` (direct)
+# Connect Cursor to `qwen3.6-27b` (public service)
 
-Cursor is **OpenAI-compatible** and routes calls through **its own cloud**, so it always points at a
-**publicly reachable** endpoint. This guide assumes the service has direct streaming enabled, as in
-Part 1. Point Cursor straight at the Anyscale service's `/v1` endpoint.
+> **Demo note:** in the training this is **shown, not run live** — it's how you'd wire Cursor to the
+> pre-deployed public Anyscale Service.
+
+Cursor is **OpenAI-compatible** and routes calls through **its own cloud**, so it always needs a
+**publicly reachable** endpoint — it can't reach a `localhost` / workspace tunnel. Point it at the
+public service's `/v1` endpoint (direct streaming enabled, as in Part 1).
 
 ## Configure
 
 **Cursor Settings → Models** (→ *OpenAI API Key*):
 
-1. Enable **"Override OpenAI Base URL"** and set it to your service URL **with `/v1`**:
+1. Enable **"Override OpenAI Base URL"** and set it to the service URL **with `/v1`**:
    ```
    https://YOUR-ANYSCALE-SERVICE-HOST.s.anyscaleuserdata.com/v1
    ```
-2. Set the **OpenAI API Key** to your Anyscale **bearer token** (same one in `.env`).
+2. Set the **OpenAI API Key** to the service's **bearer token** (`anyscale service status -n <service>`
+   → `query_auth_token`).
 3. **Add a custom model** named exactly `qwen3.6-27b`, enable it, and disable the default models so
    requests route to yours.
 4. Click **Verify** — Cursor pings the endpoint to confirm URL + key.
@@ -20,7 +24,8 @@ Part 1. Point Cursor straight at the Anyscale service's `/v1` endpoint.
 Open Cursor chat, pick `qwen3.6-27b`, send "say hi in 3 words" → a reply confirms it.
 
 ## Gotchas
-- **Public URL required** — `localhost` won't work from Cursor's cloud. Use the Anyscale Service URL + token.
+- **Public URL required** — `localhost` / the workspace tunnel won't work from Cursor's cloud
+  (*"Access to private networks is forbidden"*). Use the public Service URL + token.
 - **Exact model id** — the server only knows `qwen3.6-27b`; any other id errors.
 - **Feature coverage** — custom OpenAI models drive Cursor **Chat/Ask** reliably. **Tab** (autocomplete)
   and parts of **Agent/Composer** are tuned for Cursor's own models and may be limited.

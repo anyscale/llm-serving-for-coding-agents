@@ -1,86 +1,72 @@
-# Part 2 — Connect Claude Code, Codex, and Cursor
+# Part 2 — Connect your coding agent to the served model
 
-Use the `qwen3.6-27b` service from Part 1 directly from your coding agents. There is no proxy and no
-Python package to install. All agents read the same `.env` file.
+Two paths, reflecting how each agent reaches a model:
+
+- **Claude Code → the model in a workspace, over `localhost`** *(live)*. Claude Code runs on your
+  machine, so it talks to the workspace's `localhost:8000` through an SSH tunnel. Web search comes
+  from a local **Brave Search MCP** server.
+- **Cursor → a public Anyscale Service** *(shown, not run live)*. Cursor routes every call through
+  *its own cloud*, so it can't reach `localhost` — it needs a public HTTPS endpoint.
 
 ```
-Claude Code -> /v1/messages
-Codex      -> /v1/responses
-Cursor     -> /v1/chat/completions
-              |
-              v
-Anyscale qwen3.6-27b service with direct streaming enabled
+Claude Code ──/v1/messages────────────▶ localhost:8000  (workspace model, via SSH tunnel)   ← live
+Cursor      ──/v1/chat/completions─────▶ https://….anyscaleuserdata.com/v1  (public service) ← show-only
 ```
 
-## 1. Configure
+Both endpoints have **direct streaming** on, which exposes vLLM's native `/v1/messages` (Anthropic)
+and `/v1/chat/completions` (OpenAI) routes — no proxy, no `pip install`.
 
-```bash
-cd part2-connect-clients-direct
-cp .env.example .env
-$EDITOR .env
-```
+## Claude Code (live) — workspace model + Brave web search
 
-Set these values in `.env`:
+Prereqs:
+- The `qwen3.6-27b` model is served inside a workspace on `localhost:8000` (direct streaming on).
+- A Brave Search API key exported in your shell: `export BRAVE_API_KEY=…`
 
-- `ANYSCALE_BASE_URL`: your service URL ending in `/v1`
-- `ANYSCALE_API_KEY`: your Anyscale bearer token
-- `ANYSCALE_MODEL`: the served model id, usually `qwen3.6-27b`
+1. Open the SSH tunnel to the workspace — leave it running in its own terminal:
+   ```bash
+   anyscale workspace_v2 ssh -n <workspace> -- -N -L 8000:localhost:8000
+   ```
+2. From this folder, launch Claude Code:
+   ```bash
+   cd part2-connect-clients-direct
+   ./claude-workspace.sh
+   ```
 
-Before launching agents, confirm direct streaming is enabled. These routes should respond instead of
-returning `404`:
+`claude-workspace.sh` points Claude Code at `localhost:8000` (native `/v1/messages`), uses a dummy
+token (the workspace serve has no auth), and pins every model tier to `qwen3.6-27b`. Launching **from
+this folder** is what makes Claude Code pick up **`.mcp.json`** — a local (stdio) **Brave Search** MCP
+server — so the model gets web search (Anthropic's built-in `WebSearch`/`WebFetch` aren't available on
+a self-hosted model). Ask it to look something up online to see the MCP tools fire.
 
-- `/v1/chat/completions`
-- `/v1/messages`
-- `/v1/responses`
+## Cursor (show-only) — public service
 
-If `/v1/messages` or `/v1/responses` returns `404`, check the direct-streaming `env_vars` in
-`../part1-deploy-naive/service_naive.yaml`.
+Cursor can't use the workspace/localhost path, so it's demonstrated against the **pre-deployed public
+service**. Walk through **[`cursor-setup.md`](./cursor-setup.md)**: override the OpenAI base URL to the
+service's `/v1`, set the bearer token, add a custom model `qwen3.6-27b`, and **Verify**.
 
-## 2. Launch
+## Why the split
 
-| Agent | How to run |
-|---|---|
-| Claude Code | `./run-claude-direct.sh` |
-| Codex | `./run-codex-direct.sh` |
-| Cursor | Follow [`cursor-setup.md`](./cursor-setup.md) |
+- **Claude Code is a local process** → `localhost:8000` (the tunneled workspace) works directly; no
+  public endpoint needed.
+- **Cursor proxies through its own servers** → they refuse `localhost`/private IPs
+  (*"Access to private networks is forbidden"*). It needs a **publicly reachable HTTPS** endpoint, so
+  it uses the Anyscale Service. An SSH tunnel doesn't help — it only exposes the port on *your* laptop.
 
-You can pass normal CLI arguments through the launchers:
-
-```bash
-./run-claude-direct.sh -p "explain this repo"
-./run-codex-direct.sh "explain this repo"
-```
-
-## 3. Why This Works
-
-Part 1 enables direct streaming, which exposes vLLM's native routes behind HAProxy:
-
-- Claude Code uses the Anthropic-compatible `/v1/messages` route.
-- Codex uses the OpenAI Responses `/v1/responses` route.
-- Cursor uses the OpenAI Chat Completions `/v1/chat/completions` route.
-
-The Codex launcher also disables extra client features by default so requests stay close to standard
-tool calls. You can loosen those flags in `run-codex-direct.sh` if your Codex build and service config
-support them.
-
-## Notes for qwen
-
-- Anthropic server-side tools such as `WebSearch` and `WebFetch` are not available; use an MCP search
-  tool instead.
-- Keep MCP servers minimal because every request includes tool schemas.
-- For more reliable tool calls, enable reasoning in the Part 1 service config with
-  `chat_template_kwargs`.
-- Warm the service with a small request before long sessions. A single request past 300 seconds can hit
-  the Anyscale load-balancer timeout.
+## Notes
+- **Brave MCP** — `.mcp.json` runs `@brave/brave-search-mcp-server` via `npx` (stdio, local). Requires
+  `BRAVE_API_KEY` in the shell you launch from. Keep MCP servers minimal — every request carries the
+  tool schemas.
+- **Latency** — a reasoning model on 4× L4 pauses to think; the first turn can take tens of seconds.
+  Not a hang.
+- **Public service cold start** — warm it with one small request first; a single request past 300s
+  hits the Anyscale ALB timeout (`504`).
 
 ## Troubleshooting
-
 | Symptom | Fix |
 |---|---|
-| `404` on `/v1/messages` or `/v1/responses` | Direct streaming is not active; check `../part1-deploy-naive/service_naive.yaml`. |
-| `401` | Refresh `ANYSCALE_API_KEY` from Anyscale. |
-| `404 / model not found` | Make sure `ANYSCALE_MODEL` matches the served model id. |
+| `claude-workspace.sh`: "not reachable" | Workspace down or tunnel closed — (re)open the SSH tunnel. |
+| Brave MCP tools don't show up | `export BRAVE_API_KEY=…` before launching, and launch from this folder so `.mcp.json` loads. |
 | Claude Code warns "both token and key set" | Clear any inherited `ANTHROPIC_API_KEY`; the launcher uses `ANTHROPIC_AUTH_TOKEN`. |
-| First request times out | The service is likely cold-starting; wait a few minutes and retry. |
+| Cursor: "Access to private networks is forbidden" | Expected for `localhost` — Cursor needs the public service URL, not the tunnel. |
 
 Back: [Part 1 — deploy with direct streaming](../part1-deploy-naive/README.md)
