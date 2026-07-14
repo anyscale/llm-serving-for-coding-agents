@@ -2,7 +2,7 @@
 
 | Requirement | Value |
 |---|---|
-| Model | `qwen3.6-27b` ← `Qwen/Qwen3.6-27B-FP8` (FP8) |
+| Model | `qwen3.6-27b` ← `Qwen/Qwen3.6-27B-FP8` (FP8), loaded from an **S3 mirror** (not Hugging Face) |
 | GPU Type | L4 |
 | GPU Count | 4 (`tensor_parallel_size=4`) → `g6.12xlarge` |
 | Workload Type | Balanced |
@@ -18,6 +18,7 @@
 | Speculative decoding | OFF |
 
 Also required:
+- **Load weights from S3, not Hugging Face**: set `model_source` to a Ray Serve LLM `CloudMirrorConfig(bucket_uri="s3://…/Qwen3.6-27B-FP8/")` — avoids HF rate limits when many people deploy at once, and works with the stock image (no RunAI streamer; the cluster needs S3 read access to the bucket).
 - Direct streaming (one endpoint serving `/v1/chat/completions`, `/v1/messages`, `/v1/responses`): set `RAY_SERVE_ENABLE_HA_PROXY=1` and `RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1` as service-level `env_vars` (NOT `runtime_env`).
 - Image: stock `anyscale/ray-llm:2.56.0-py312-cu130` (no Containerfile).
 - Keep 4× L4 / TP=4 — do not substitute a bigger GPU.
