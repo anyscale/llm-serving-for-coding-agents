@@ -13,7 +13,7 @@ unmeasured default is autoscale `target_ongoing_requests`, which is intentionall
 |---|---|---|
 | GPU | 4× L4, TP=4 | 1× RTX PRO 6000 96 GB, TP=1 (`g7e.4xlarge`) |
 | Context | FP8, 128K | FP8, full 256K |
-| Model load | HF download, ~85 s | RunAI Streamer S3→GPU, ~25 s |
+| Model load | S3 download, ~85 s | RunAI Streamer S3→GPU, ~25 s |
 | Compile | Recompile every cold start, ~74 s | S3 torch.compile cache, ~9 s |
 | Scaling | Single replica | Autoscale 1→4, round-robin |
 
@@ -58,11 +58,11 @@ cd part3-optimize
 anyscale service deploy -f service_optimized.yaml
 ```
 
-**Fast model loading** streams the FP8 weights from S3. Set `S3_WEIGHTS` in
-`serve_qwen3_6_27b_optimized.py` to your S3 path, then upload the weights there once
-(`hf download Qwen/Qwen3.6-27B-FP8`, then `aws s3 sync … "$S3_WEIGHTS"`). The prebuilt compile caches load
-from the repo's `s3://llm-guide/…` prefixes (rebuild them for your own stack). To skip S3 loading, set
-`ENABLE_FAST_MODEL_LOADING=False` (the other optimizations still work).
+**Fast model loading** streams the FP8 weights from S3. `S3_WEIGHTS` already points at a staged copy, so
+it works out of the box; override it only to stream from your own bucket (`hf download Qwen/Qwen3.6-27B-FP8`,
+then `aws s3 sync … "$S3_WEIGHTS"`). The prebuilt compile caches load from the repo's `s3://llm-guide/…`
+prefixes (rebuild them for your own stack). To skip S3 loading, set `ENABLE_FAST_MODEL_LOADING=False` (the
+other optimizations still work).
 
 Then point your Part 2 clients at this service's URL (for Cursor, copy it from the console **Query** panel).
 
