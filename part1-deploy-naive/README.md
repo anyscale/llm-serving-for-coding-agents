@@ -5,8 +5,8 @@ un-optimized — the point is to prove the model serves and to give you a baseli
 
 **What "naive" means here:** 4× L4 (`g6.12xlarge`, TP=4), single replica, weights downloaded from remote storage (could also be huggingface) on every cold start,
 no compile cache, no autoscaling, no speculative/routing tricks.
-It works; it's just the wrong shape for a team (≈ one concurrent user, slow cold start). **We use 4× L4
-here because that's the GPU shape available for the Ray Summit training session** — not because it's optimal.
+It works; it's just the wrong shape for a team (≈ one concurrent user, slow cold start) — and 4× L4 isn't
+the optimal GPU for this model (the FP8 weights fit on a single bigger GPU; see Part 3).
 
 ## Files
 - `serve_qwen3_6_27b_naive.py` — the Ray Serve LLM app (one `LLMConfig`, built with `build_openai_app`).
@@ -77,10 +77,9 @@ also exists — handy for a service *without* direct streaming — but this repo
 
 - **Image `anyscale/ray-llm:2.56.0-py312-cu130`** — ships vLLM 0.22.0, new enough for this model. The
   older GA `ray-llm:2.55.x` ships vLLM 0.18 (too old) and fails to load Qwen3.6.
-- **4× L4 / TP=4** — chosen for **GPU availability**: 4× L4 (`g6.12xlarge`) is the shape allocated to
-  attendees for the **Ray Summit hands-on session**, so the lab runs on it. It's not optimal — the FP8
-  weights fit on a single bigger GPU; an optimized variant moves to **1× RTX PRO 6000 96GB** (TP=1) to
-  serve the model's full 256K context in FP8.
+- **4× L4 / TP=4** — a common, widely-available GPU shape (`g6.12xlarge`) used here as the baseline. It's
+  not optimal — the FP8 weights fit on a single bigger GPU; an optimized variant moves to **1× RTX PRO
+  6000 96GB** (TP=1) to serve the model's full 256K context in FP8.
 
 ## KV cache dtype
 

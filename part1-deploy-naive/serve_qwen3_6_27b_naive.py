@@ -6,7 +6,6 @@
 # ── What makes it naive ─────────────────────────────────────────────────────────────
 #
 # GPU choice: 4× L4 (g6.12xlarge), tensor_parallel_size=4
-#   This is the GPU shape available for the Ray Summit training session.
 #   All 4 L4s sit on one node, connected via PCIe (no NVLink).
 #   L4 has the lowest memory bandwidth of serving GPUs (~300 GB/s),
 #   and PCIe interconnect adds communication overhead between the GPUs.
