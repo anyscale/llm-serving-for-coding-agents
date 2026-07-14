@@ -1,35 +1,20 @@
-# Connect Cursor to `qwen3.6-27b` (public service)
+# Connect Cursor to the served model (public service)
 
-> **Demo note:** in the training this is **shown, not run live** — it's how you'd wire Cursor to the
-> pre-deployed public Anyscale Service.
+> **Demo note:** shown, not run live — this is how you'd point Cursor at the pre-deployed public Anyscale Service.
 
-Cursor is **OpenAI-compatible** and routes calls through **its own cloud**, so it always needs a
-**publicly reachable** endpoint — it can't reach a `localhost` / workspace tunnel. Point it at the
-public service's `/v1` endpoint (direct streaming enabled, as in Part 1).
+Cursor routes calls through its own cloud, so it needs a **public HTTPS** endpoint — not `localhost` / the workspace tunnel. Point it at the service's `/v1`.
 
-## Configure
+**Get the URL + token:** in the Anyscale console, open **Services → your service → Query** and copy the base URL and the bearer token from the sample request.
 
-**Cursor Settings → Models** (→ *OpenAI API Key*):
+**Cursor Settings → Models → OpenAI API Key:**
 
-1. Enable **"Override OpenAI Base URL"** and set it to the service URL **with `/v1`**:
-   ```
-   https://YOUR-ANYSCALE-SERVICE-HOST.s.anyscaleuserdata.com/v1
-   ```
-2. Set the **OpenAI API Key** to the service's **bearer token** (`anyscale service status -n <service>`
-   → `query_auth_token`).
-3. **Add a custom model** named exactly `qwen3.6-27b`, enable it, and disable the default models so
-   requests route to yours.
-4. Click **Verify** — Cursor pings the endpoint to confirm URL + key.
+1. Enable **Override OpenAI Base URL** → the base URL with `/v1` appended (e.g. `https://YOUR-SERVICE-HOST.s.anyscaleuserdata.com/v1`).
+2. Set **OpenAI API Key** → the bearer token from the Query panel.
+3. **Add a custom model** named `qwen3.6-27b` — this must match the `model_id` set in the serve app's `LLMConfig`; it's the only id the server answers to. Enable it, and disable the default models.
+4. **Verify** → then in chat pick `qwen3.6-27b` and send "say hi in 3 words".
 
-Open Cursor chat, pick `qwen3.6-27b`, send "say hi in 3 words" → a reply confirms it.
-
-## Gotchas
-- **Public URL required** — `localhost` / the workspace tunnel won't work from Cursor's cloud
-  (*"Access to private networks is forbidden"*). Use the public Service URL + token.
-- **Exact model id** — the server only knows `qwen3.6-27b`; any other id errors.
-- **Feature coverage** — custom OpenAI models drive Cursor **Chat/Ask** reliably. **Tab** (autocomplete)
-  and parts of **Agent/Composer** are tuned for Cursor's own models and may be limited.
-- **Tool calling** is server-side (`tool_call_parser=qwen3_coder`); if tool calls come back as raw text,
-  that parser would need adjusting on the service.
-- **Cold start / 300s cap** — warm the service first (send one quick request); a single request past
-  300s hits the Anyscale ALB timeout (`504`).
+**Gotchas**
+- `localhost` / tunnel → `Access to private networks is forbidden`; use the public URL.
+- Model name must equal the `LLMConfig` `model_id` (`qwen3.6-27b`) exactly.
+- Chat/Ask work well; Tab and parts of Agent/Composer are tuned for Cursor's own models.
+- Warm the service first — one request past 300s hits the Anyscale ALB `504` timeout.

@@ -1,4 +1,4 @@
-/anyscale-workload-llm-serving Generate a naive (un-optimized baseline) OpenAI-compatible Ray Serve LLM deployment on an Anyscale Service from the requirements below. Output two files: `serve_qwen3_6_27b_naive.py` (`LLMConfig` + `build_openai_app`) and `service_naive.yaml`.
+/anyscale-workload-llm-serving Deploy Qwen3.6-27B (FP8) as an OpenAI-compatible endpoint on an Anyscale Service using Ray Serve LLM, per the requirements below. These requirements are complete and final — skip the requirements interview and the confirmation step, and generate the two files directly: `serve_qwen3_6_27b_naive.py` (`LLMConfig` + `build_openai_app`) and `service_naive.yaml`.
 
 | Requirement | Value |
 |---|---|
