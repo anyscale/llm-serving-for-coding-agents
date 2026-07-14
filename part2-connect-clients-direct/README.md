@@ -30,12 +30,24 @@ Prereqs: the model is served in a workspace on `localhost:8000`; `export BRAVE_A
 
 Cursor routes every call through its own cloud, which refuses `localhost`/private IPs (`Access to private networks is forbidden`), so it needs a **public HTTPS** endpoint — an Anyscale Service, not the workspace tunnel (a tunnel only opens the port on your own machine).
 
-**Get the URL + token:** in the Anyscale console, open **Services → your service → Query** and copy the base URL and bearer token from the sample request.
+**Shared service URL + token** — use these:
+
+```
+base_url = https://qwen3-6-27b-fp8-jgz99.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com
+token    = fULTzITwglt9TAn0kns0RAAIlFDxOk_F07xKkfPVpm0
+```
+
+They come from the Anyscale console → **Services → the service → Query** (click **Query**, then copy `base_url` + `token` from the panel):
+
+![The Query button on the service Overview page](./images/service-query-button.png)
+
+![The Query panel showing base_url and token](./images/service-query-panel.png)
 
 **Cursor Settings → Models → OpenAI API Key:**
 
-1. Enable **Override OpenAI Base URL** → the base URL with `/v1` appended (e.g. `https://YOUR-SERVICE-HOST.s.anyscaleuserdata.com/v1`).
-2. Set **OpenAI API Key** → the bearer token from the Query panel.
+1. Enable **Override OpenAI Base URL** → the base URL **with `/v1` appended**:
+   `https://qwen3-6-27b-fp8-jgz99.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com/v1`
+2. Set **OpenAI API Key** → the token above (`fULTzITwglt9TAn0kns0RAAIlFDxOk_F07xKkfPVpm0`).
 3. **Add a custom model** named `qwen3.6-27b` — must match the `model_id` set in the serve app's `LLMConfig`; it's the only id the server answers to. Enable it, and disable the default models.
 4. **Verify**, then in chat pick `qwen3.6-27b` and send "say hi in 3 words".
 
