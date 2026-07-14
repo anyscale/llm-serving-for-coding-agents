@@ -129,6 +129,23 @@ relaunch the clients. See the [`Part 3 README`](./part3-optimize/README.md) for 
 work-hours caveat, [`BENCHMARKS.md`](./part3-optimize/notes/BENCHMARKS.md) for measured numbers, and
 [`INCOMPATIBILITIES.md`](./part3-optimize/notes/INCOMPATIBILITIES.md) for knobs that can't be combined.
 
+## Collecting Real Claude Code Session Data for Benchmarking
+
+The Part 3 numbers in [`BENCHMARKS.md`](./part3-optimize/notes/BENCHMARKS.md) were measured by replaying
+real Claude Code sessions rather than synthetic prompts. Claude Code saves every session locally as JSONL
+(one JSON object per line) at:
+
+```
+~/.claude/projects/<project>/<session-id>.jsonl
+```
+
+where `<project>` is your working-directory path with non-alphanumeric characters replaced by `-` — a
+project at `/Users/alice/code/myapp` becomes `-Users-alice-code-myapp`.
+
+Copy the sessions you want to benchmark with, then ask your coding agent to extract the per-request token
+counts and replay them against the service. Transcripts contain your source code and prompts, so treat
+trace files like source code.
+
 ## How Much Does It Save?
 
 The simple planning number is **~50 registered developers per RTX PRO 6000 GPU**. The GPU can hold
