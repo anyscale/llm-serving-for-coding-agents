@@ -85,14 +85,10 @@ set -a && source .env && set +a
 curl -fsS -H "Authorization: Bearer $ANYSCALE_API_KEY" "$ANYSCALE_BASE_URL/models"
 ```
 
-### 4. Launch an agent
+### 4. Connect a coding agent
 
-```bash
-./run-claude-direct.sh
-```
-
-You can also run Codex with `./run-codex-direct.sh`. For Cursor, see
-[`part2-connect-clients-direct/cursor-setup.md`](./part2-connect-clients-direct/cursor-setup.md).
+Point Claude Code or Cursor at the served model — full steps in
+[`part2-connect-clients-direct/`](./part2-connect-clients-direct/README.md).
 
 ### 5. (Optional) Deploy the optimized service
 
