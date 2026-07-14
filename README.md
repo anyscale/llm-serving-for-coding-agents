@@ -129,6 +129,77 @@ relaunch the clients. See the [`Part 3 README`](./part3-optimize/README.md) for 
 work-hours caveat, [`BENCHMARKS.md`](./part3-optimize/notes/BENCHMARKS.md) for measured numbers, and
 [`INCOMPATIBILITIES.md`](./part3-optimize/notes/INCOMPATIBILITIES.md) for knobs that can't be combined.
 
+## Collecting Real Claude Code Session Data for Benchmarking
+
+The Part 3 numbers in [`BENCHMARKS.md`](./part3-optimize/notes/BENCHMARKS.md) were measured by replaying
+real Claude Code sessions (inputs up to ~73K tokens, ~60–209 output tokens) rather than synthetic prompts.
+Coding-agent traffic has an unusual shape — very large, highly cacheable inputs and short outputs — so a
+benchmark that doesn't match it will mis-size the GPU. Here is how to collect your own traces.
+
+### The raw files on disk
+
+Claude Code continuously saves every session locally as JSONL (one JSON object per line). By default,
+transcripts live at:
+
+```
+~/.claude/projects/<project>/<session-id>.jsonl
+```
+
+where `<project>` is your working-directory path with non-alphanumeric characters replaced by `-`. A
+project at `/Users/alice/code/myapp` becomes a folder named `-Users-alice-code-myapp`.
+
+Copy the sessions you want before they rotate — Claude Code prunes old transcripts after a retention
+period (`cleanupPeriodDays` in `~/.claude/settings.json`, 30 days by default):
+
+```bash
+mkdir -p traces
+cp ~/.claude/projects/-Users-alice-code-myapp/*.jsonl traces/
+```
+
+### What each line contains
+
+Each line is a typed record. For benchmarking, the useful ones are `"type": "assistant"` records, which
+embed the full API response including `message.model` and `message.usage`:
+
+| `message.usage` field | Meaning |
+|---|---|
+| `input_tokens` | Uncached input tokens processed for this request |
+| `cache_read_input_tokens` | Input tokens served from the prefix cache |
+| `cache_creation_input_tokens` | Input tokens written into the cache |
+| `output_tokens` | Generated tokens |
+
+Together with the top-level `timestamp`, this gives a load generator everything it needs: real prompt
+sizes (the sum of all three input fields), real output lengths, real cache-hit ratios, and real arrival
+times. `"type": "user"` records hold the actual prompts and tool results if you want to replay content
+rather than just shape, and subagent requests are marked `"isSidechain": true` — keep them, since
+parallel subagents are what drive per-user concurrency spikes.
+
+### Extracting a request trace
+
+One API response can span several JSONL lines (one per content block), each repeating the same `usage`,
+so dedupe by `message.id` before summing tokens:
+
+```bash
+jq -rs '
+  [ .[] | select(.type == "assistant") ]
+  | unique_by(.message.id)
+  | .[]
+  | [ .timestamp,
+      .message.usage.input_tokens,
+      .message.usage.cache_read_input_tokens,
+      .message.usage.cache_creation_input_tokens,
+      .message.usage.output_tokens ]
+  | @csv' traces/*.jsonl > trace.csv
+```
+
+Feed the resulting per-request trace to your load generator — reconstruct prompts of the recorded input
+lengths, cap generation at the recorded output lengths, and issue requests at the recorded timestamps
+against the service URL from Part 1 or Part 3. Replaying at recorded arrival times reproduces single-user
+load; to size for a team, overlay several sessions shifted to the same start time.
+
+**Privacy note:** transcripts contain your source code, prompts, and tool outputs. Treat trace files like
+source code, and scrub them before sharing benchmark data outside your team.
+
 ## How Much Does It Save?
 
 The simple planning number is **~50 registered developers per RTX PRO 6000 GPU**. The GPU can hold
