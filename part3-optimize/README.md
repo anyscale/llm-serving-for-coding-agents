@@ -1,7 +1,7 @@
 # Part 3 — Optimize the deployment
 
 Part 3 turns the naive Part 1 service into a multi-user, lower-latency, cost-aware deployment. It keeps the
-same model id (`qwen3.6-27b`) and the same Part 2 clients; repoint `ANYSCALE_BASE_URL` to this service.
+same model id (`qwen3.6-27b`) and the same Part 2 clients — point them at this service's URL.
 
 The defaults are measured on the target GPU. See [`BENCHMARKS.md`](BENCHMARKS.md) for numbers and
 [`NOTES-incompatibilities.md`](NOTES-incompatibilities.md) for knobs that cannot be combined. The only
@@ -34,7 +34,7 @@ GPU — its FP4 attention kernel is datacenter-Blackwell-only and crashes on SM1
 | `ENABLE_SPEC_DECODE` | `False` | MTP gives ~1.9× decode, but loses the fast S3 loader. Opt in only if decode speed matters more than cold start. |
 | `ENABLE_PREFIX_ROUTING` | `False` | Hotspots badly on shared-prefix agent traffic. Round-robin is faster for this workload. |
 
-Direct streaming is always on because Part 2 uses the native `/v1/messages` and `/v1/responses` endpoints.
+Direct streaming is always on because Part 2 uses the native `/v1/messages` (Claude Code) and `/v1/chat/completions` (Cursor) endpoints.
 It is enabled in `service_optimized.yaml` so the Serve controller sees it at startup. If you enable prefix
 routing, the service uses `DirectStreamingPrefixCacheRouter` until the upstream fix
 [ray#64328](https://github.com/ray-project/ray/pull/64328) lands in ray-llm 2.57.
@@ -58,12 +58,14 @@ cd part3-optimize
 anyscale service deploy -f service_optimized.yaml
 ```
 
-For fast loading, upload the FP8 weights once (`hf download Qwen/Qwen3.6-27B-FP8`, then `aws s3 sync`) and
-point `model_source` at that `s3://...` path. To skip S3, set `ENABLE_FAST_MODEL_LOADING=False`; the other
-optimizations still work.
+**Stage the artifacts first** (once per cloud). The app reads the FP8 weights and the torch.compile caches
+from `$ANYSCALE_ARTIFACT_STORAGE/qwen-3.6/` — the cloud's
+[artifact storage](https://docs.anyscale.com/resources/environment-variables). Upload the weights there
+(`hf download Qwen/Qwen3.6-27B-FP8`, then `aws s3 sync … "$ANYSCALE_ARTIFACT_STORAGE/qwen-3.6/Qwen3.6-27B-FP8/"`),
+plus the prebuilt compile caches under `…/qwen-3.6/compiled-cache[-aot]/`. To skip S3 loading, set
+`ENABLE_FAST_MODEL_LOADING=False` (the other optimizations still work).
 
-Then update `../part2-connect-clients-direct/.env`: set `ANYSCALE_BASE_URL` to this service URL and relaunch
-the clients.
+Then point your Part 2 clients at this service's URL (for Cursor, copy it from the console **Query** panel).
 
 Before turning on spec decode or prefix routing, read [`BENCHMARKS.md`](BENCHMARKS.md) and
 [`NOTES-incompatibilities.md`](NOTES-incompatibilities.md). Both are off by default for measured reasons.
