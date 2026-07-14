@@ -1,25 +1,25 @@
 # llm-serving-for-coding-agents
 
-Self-host an open-source coding-assistant LLM on **Anyscale + Ray Serve LLM** and use it directly from
-**Claude Code, Codex, and Cursor**.
+Self-host an open-source coding-assistant LLM on **Anyscale + Ray Serve LLM** and use it from
+**Claude Code and Cursor**.
 
 This repo serves `qwen3.6-27b`, a 27B FP8 hybrid-reasoning and tool-calling model. With **direct
-streaming** enabled, one Anyscale service exposes the native APIs expected by all three agents, without
-running a separate proxy.
+streaming** enabled, the served model exposes the native Anthropic and OpenAI APIs the agents expect —
+no separate proxy.
 
 ## What This Repo Shows
 
 | Step | Goal | Folder |
 |---|---|---|
 | 1 | Deploy `qwen3.6-27b` on Anyscale with Ray Serve LLM. | [`part1-deploy-naive/`](./part1-deploy-naive/) |
-| 2 | Connect Claude Code, Codex, and Cursor directly to the service. | [`part2-connect-clients-direct/`](./part2-connect-clients-direct/) |
+| 2 | Connect Claude Code and Cursor to the served model. | [`part2-connect-clients-direct/`](./part2-connect-clients-direct/) |
 | 3 | Optimize the deployment for a 1x RTX PRO 6000 with 256K FP8 context. | [`part3-optimize/`](./part3-optimize/) |
 
 ## API Endpoints (via Direct Streaming)
 
-Direct streaming lets one Ray Serve LLM service expose the OpenAI, Anthropic Messages, and OpenAI
-Responses APIs without a separate proxy. Enable it with service-level environment variables in
-[`part1-deploy-naive/service_naive.yaml`](./part1-deploy-naive/service_naive.yaml):
+Direct streaming lets one Ray Serve LLM deployment expose the OpenAI and Anthropic Messages APIs
+without a separate proxy. Enable it with service-level environment variables (see
+[`part1-deploy-naive/service_naive.yaml`](./part1-deploy-naive/service_naive.yaml)):
 
 ```yaml
 env_vars:
@@ -30,70 +30,41 @@ env_vars:
 Set these at the **service level**, not in a per-deployment `runtime_env`, so the Ray Serve controller sees
 them during startup. See the [Part 1 README](./part1-deploy-naive/README.md) for details.
 
-With direct streaming enabled, the same service exposes each agent's expected API path:
+With direct streaming enabled, the deployment exposes each agent's expected API path:
 
 | Path | Used by |
 |---|---|
-| `POST /v1/chat/completions` | Cursor |
 | `POST /v1/messages` | Claude Code |
-| `POST /v1/responses` | Codex |
+| `POST /v1/chat/completions` | Cursor |
 
 ## Prerequisites
 
-- An Anyscale account.
-- The Anyscale CLI: `pip install anyscale`, then `anyscale login`.
-- One or more coding agents: Claude Code, Codex (`npm i -g @openai/codex`), or Cursor.
-- The Ray LLM image `anyscale/ray-llm:2.56.0-py312-cu130`, which includes vLLM 0.22.0.
+- An Anyscale account and the Anyscale CLI (`pip install anyscale`, then `anyscale login`).
+- Claude Code and/or Cursor.
+- The Ray LLM image `anyscale/ray-llm:2.56.0-py312-cu130` (vLLM 0.22.0) for the naive service. Claude Code's
+  `/v1/messages` needs **vLLM ≥ 0.23** — see [Part 2](./part2-connect-clients-direct/README.md).
 
 ## Quick Start
 
-### 1. Deploy the service
+### 1. Deploy the model
 
 ```bash
 cd part1-deploy-naive
 anyscale service deploy -f service_naive.yaml
 ```
 
-Wait for the service to reach `RUNNING`, then copy its URL and bearer token.
+Wait for `RUNNING`, then grab the service URL + bearer token from the console (**Services → your service → Query**).
 
-### 2. Configure the clients
-
-```bash
-cd ../part2-connect-clients-direct
-cp .env.example .env
-$EDITOR .env
-```
-
-Set these required values in `.env`:
-
-```bash
-ANYSCALE_BASE_URL="https://HOST.s.anyscaleuserdata.com/v1"
-ANYSCALE_API_KEY="<bearer token>"
-ANYSCALE_MODEL="qwen3.6-27b"
-```
-
-Notes:
-
-- `ANYSCALE_BASE_URL` must end in `/v1` and must not have a trailing slash.
-- `ANYSCALE_API_KEY` should be the raw token, without the `Bearer ` prefix.
-- `ANYSCALE_MODEL` must match the `model_id` used by the deployed service.
-
-### 3. Verify the service
-
-```bash
-set -a && source .env && set +a
-curl -fsS -H "Authorization: Bearer $ANYSCALE_API_KEY" "$ANYSCALE_BASE_URL/models"
-```
-
-### 4. Connect a coding agent
+### 2. Connect a coding agent
 
 Point Claude Code or Cursor at the served model — full steps in
-[`part2-connect-clients-direct/`](./part2-connect-clients-direct/README.md).
+[`part2-connect-clients-direct/`](./part2-connect-clients-direct/README.md). In short: Claude Code reaches a
+workspace-hosted model over an SSH tunnel (with Brave web-search MCP); Cursor uses the public service URL + token.
 
-### 5. (Optional) Deploy the optimized service
+### 3. (Optional) Deploy the optimized service
 
-The Part 1 deployment uses 4× L4 GPUs. Part 3 optimizes the service for a single **RTX PRO 6000 96 GB** GPU
-with FP8, 256K context, and faster cold starts:
+The Part 1 deployment uses 4× L4 GPUs. Part 3 optimizes for a single **RTX PRO 6000 96 GB** GPU with FP8,
+256K context, and faster cold starts:
 
 ```bash
 cd ../part3-optimize
@@ -108,5 +79,6 @@ Optimizations include:
 - **CUDA graphs** — ~2.87× decode speedup on Blackwell.
 - **Autoscale** — scales 1→4 replicas with round-robin routing.
 
-Then update `../part2-connect-clients-direct/.env`: point `ANYSCALE_BASE_URL` to the new service URL and
-relaunch the clients. See the [`Part 3 README`](./part3-optimize/README.md) for toggle defaults, [`BENCHMARKS.md`](./part3-optimize/BENCHMARKS.md) for measured numbers, and [`NOTES-incompatibilities.md`](./part3-optimize/NOTES-incompatibilities.md) for knobs that can't be combined.
+Then point your agent at the new service URL (Part 2). See the [Part 3 README](./part3-optimize/README.md)
+for toggle defaults, [`BENCHMARKS.md`](./part3-optimize/BENCHMARKS.md) for measured numbers, and
+[`NOTES-incompatibilities.md`](./part3-optimize/NOTES-incompatibilities.md) for knobs that can't be combined.
