@@ -58,11 +58,10 @@ cd part3-optimize
 anyscale service deploy -f service_optimized.yaml
 ```
 
-**Stage the artifacts first** (once per cloud). The app reads the FP8 weights and the torch.compile caches
-from `$ANYSCALE_ARTIFACT_STORAGE/qwen-3.6/` — the cloud's
-[artifact storage](https://docs.anyscale.com/resources/environment-variables). Upload the weights there
-(`hf download Qwen/Qwen3.6-27B-FP8`, then `aws s3 sync … "$ANYSCALE_ARTIFACT_STORAGE/qwen-3.6/Qwen3.6-27B-FP8/"`),
-plus the prebuilt compile caches under `…/qwen-3.6/compiled-cache[-aot]/`. To skip S3 loading, set
+**Fast model loading** streams the FP8 weights from S3. Set `S3_WEIGHTS` in
+`serve_qwen3_6_27b_optimized.py` to your S3 path, then upload the weights there once
+(`hf download Qwen/Qwen3.6-27B-FP8`, then `aws s3 sync … "$S3_WEIGHTS"`). The prebuilt compile caches load
+from the repo's `s3://llm-guide/…` prefixes (rebuild them for your own stack). To skip S3 loading, set
 `ENABLE_FAST_MODEL_LOADING=False` (the other optimizations still work).
 
 Then point your Part 2 clients at this service's URL (for Cursor, copy it from the console **Query** panel).

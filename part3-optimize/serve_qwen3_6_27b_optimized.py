@@ -51,27 +51,22 @@ if ENABLE_SPEC_DECODE and ENABLE_FAST_MODEL_LOADING:
           "(RunAI Streamer conflicts with MTP, vllm#42060); using the HF loader instead.")
     ENABLE_FAST_MODEL_LOADING = False
 
-import os
-
 from ray.serve.llm import LLMConfig, build_openai_app
 
 # ── Fixed for this deployment ────────────────────────────────────────────────
 MODEL_ID   = "qwen3.6-27b"
 HF_SOURCE  = "Qwen/Qwen3.6-27B-FP8"                                          # plain HF download
-
-# Per-cloud artifact storage: ANYSCALE_ARTIFACT_STORAGE is an s3://… URI set in every Anyscale cluster.
-# Stage the FP8 weights + compile caches under <artifact_storage>/qwen-3.6/ once and this runs on any
-# cloud. https://docs.anyscale.com/resources/environment-variables
-ARTIFACT   = os.environ["ANYSCALE_ARTIFACT_STORAGE"].rstrip("/")
-S3_WEIGHTS = f"{ARTIFACT}/qwen-3.6/Qwen3.6-27B-FP8/"                         # for RunAI Streamer
+# TODO: point S3_WEIGHTS at your S3 copy of the FP8 weights (used by RunAI Streamer when
+# ENABLE_FAST_MODEL_LOADING=True; otherwise the plain HF_SOURCE download is used). See the README.
+S3_WEIGHTS = "s3://YOUR-BUCKET/Qwen3.6-27B-FP8/"                             # for RunAI Streamer — fill in
 
 # Compile-cache locations (used only when ENABLE_COMPILE_CACHE). The S3 PREFIXES ENCODE the exact stack a
 # torch.compile cache is keyed to (vLLM version + GPU arch + flags); these were rebuilt + validated
 # 2026-06-30 on vLLM 0.22.0 / RTX PRO 6000 (SM120) / FP8 weights+KV / TP=1 / 256K. vLLM caches in two dirs
 # (inductor + AOT), restored to the two local paths below. Change the image/GPU/flags -> rebuild + new prefix.
-COMPILE_CACHE_S3      = f"{ARTIFACT}/qwen-3.6/compiled-cache/vllm0.22.0-rtxpro6000-sm120-fp8-tp1-256k/"
+COMPILE_CACHE_S3      = "s3://llm-guide/data/ray-serve-llm/compiled-cache/qwen3.6-27b/vllm0.22.0-rtxpro6000-sm120-fp8-tp1-256k/"
 COMPILE_CACHE_DIR     = "/home/ray/.cache/vllm/torch_compile_cache/qwen3.6-27b"
-COMPILE_CACHE_AOT_S3  = f"{ARTIFACT}/qwen-3.6/compiled-cache-aot/vllm0.22.0-rtxpro6000-sm120-fp8-tp1-256k/"
+COMPILE_CACHE_AOT_S3  = "s3://llm-guide/data/ray-serve-llm/compiled-cache/qwen3.6-27b-aot/vllm0.22.0-rtxpro6000-sm120-fp8-tp1-256k/"
 COMPILE_CACHE_AOT_DIR = "/home/ray/.cache/vllm/torch_compile_cache/torch_aot_compile/d2d5f6429cf68f56db205af1548136d88bf1d13247d0d6a24209dbe6420ebc9b"
 
 # ── Build the engine config from the toggles ─────────────────────────────────
