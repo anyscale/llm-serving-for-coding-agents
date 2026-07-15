@@ -1,13 +1,14 @@
 # Part 2 — Connect your coding agent to the served model
 
-Two paths, split by how each agent reaches the model:
+Three agents, two paths — split by how each reaches the model:
 
 | Agent | How it connects |
 |---|---|
 | **Claude Code** | a model served in a workspace, over an SSH tunnel → `localhost:8000` (`/v1/messages`), with Brave web-search MCP |
+| **Codex** | the same workspace tunnel → `localhost:8000` (`/v1/responses`), with Brave web-search MCP |
 | **Cursor** | a public Anyscale Service (`/v1/chat/completions`) — its cloud can't reach `localhost` |
 
-Both endpoints run **direct streaming**, which exposes vLLM's native `/v1/messages` (Anthropic) and `/v1/chat/completions` (OpenAI) — no proxy, no `pip install`.
+Both endpoints run **direct streaming**, which exposes vLLM's native `/v1/messages` (Anthropic), `/v1/responses` (OpenAI Responses), and `/v1/chat/completions` (OpenAI) — no proxy, no `pip install`.
 
 ## Claude Code — workspace model + web search
 
@@ -25,6 +26,19 @@ Prereqs: the model is served in a workspace on `localhost:8000`; `export BRAVE_A
    ```
 
 `claude-workspace.sh` points Claude Code at `localhost:8000` with a dummy token and pins every model tier to `qwen3.6-27b`. `.mcp.json` adds a local **Brave Search** MCP server for web search — Anthropic's built-in `WebSearch`/`WebFetch` don't work on a self-hosted model. First turn is slow (reasoning model on 4× L4) — not a hang.
+
+## Codex — workspace model + web search
+
+Codex is a terminal agent too, so it takes the same tunnel to the workspace model — it just speaks the OpenAI **Responses** API (`/v1/responses`) instead of Anthropic Messages.
+
+Prereqs: the tunnel from the Claude Code step is open (`localhost:8000`); `export BRAVE_API_KEY=…`; `npm i -g @openai/codex`.
+
+Launch from this folder (so `.codex/config.toml` loads):
+```bash
+cd part2-connect-clients-direct && ./codex-workspace.sh
+```
+
+`codex-workspace.sh` points Codex at a `workspace-local` provider (`base_url=localhost:8000/v1`, `wire_api=responses`, dummy key) pinned to `qwen3.6-27b`, and turns off Codex's hosted tools (`web_search`, image gen, plugins) that a self-hosted provider can't serve. `.codex/config.toml` adds the same local **Brave Search** MCP as `.mcp.json` — that's where Codex gets web search.
 
 ## Cursor — public service
 
@@ -57,8 +71,9 @@ Chat/Ask work well; Tab and parts of Agent/Composer are tuned for Cursor's own m
 
 | Symptom | Fix |
 |---|---|
-| `claude-workspace.sh`: "not reachable" | Workspace down or tunnel closed — (re)open the tunnel. |
-| Brave MCP tools don't appear | `export BRAVE_API_KEY=…`, and launch from this folder so `.mcp.json` loads. |
+| `claude-workspace.sh` / `codex-workspace.sh`: "not reachable" | Workspace down or tunnel closed — (re)open the tunnel. |
+| Brave MCP tools don't appear | `export BRAVE_API_KEY=…`, and launch from this folder so `.mcp.json` (Claude Code) / `.codex/config.toml` (Codex) loads. |
+| Codex: tool call returns "unsupported call" | Update Codex — dispatching MCP tools over a custom (non-OpenAI) provider needs a recent build. |
 | Claude Code: "both token and key set" | Clear inherited `ANTHROPIC_API_KEY`; the launcher uses `ANTHROPIC_AUTH_TOKEN`. |
 | Cursor: "Access to private networks is forbidden" | Expected for `localhost` — use the public service URL. |
 | Cursor: model not found | The custom-model name must equal the `LLMConfig` `model_id` (`qwen3.6-27b`) exactly. |

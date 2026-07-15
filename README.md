@@ -1,7 +1,7 @@
 # llm-serving-for-coding-agents
 
 Self-host an open-source coding-assistant LLM on **Anyscale + Ray Serve LLM** and use it from
-**Claude Code and Cursor**.
+**Claude Code, Codex, and Cursor**.
 
 This repo serves `qwen3.6-27b`, a 27B FP8 hybrid-reasoning and tool-calling model. With **direct
 streaming** enabled, the served model exposes the native Anthropic and OpenAI APIs the agents expect —
@@ -12,7 +12,7 @@ no separate proxy.
 | Step | Goal | Folder |
 |---|---|---|
 | 1 | Deploy `qwen3.6-27b` on Anyscale with Ray Serve LLM. | [`part1-deploy-naive/`](./part1-deploy-naive/) |
-| 2 | Connect Claude Code and Cursor to the served model. | [`part2-connect-clients-direct/`](./part2-connect-clients-direct/) |
+| 2 | Connect Claude Code, Codex, and Cursor to the served model. | [`part2-connect-clients-direct/`](./part2-connect-clients-direct/) |
 | 3 | Optimize the deployment for a 1x RTX PRO 6000 with 256K FP8 context. | [`part3-optimize/`](./part3-optimize/) |
 
 ## API Endpoints (via Direct Streaming)
@@ -35,12 +35,13 @@ With direct streaming enabled, the deployment exposes each agent's expected API 
 | Path | Used by |
 |---|---|
 | `POST /v1/messages` | Claude Code |
+| `POST /v1/responses` | Codex |
 | `POST /v1/chat/completions` | Cursor |
 
 ## Prerequisites
 
 - An Anyscale account and the Anyscale CLI (`pip install anyscale`, then `anyscale login`).
-- Claude Code and/or Cursor.
+- Claude Code, Codex, and/or Cursor.
 - The Ray LLM image `anyscale/ray-llm:2.56.0-py312-cu130` (vLLM 0.22.0) for the naive service. Claude Code's
   `/v1/messages` needs **vLLM ≥ 0.23** — see [Part 2](./part2-connect-clients-direct/README.md).
 
@@ -57,8 +58,8 @@ Wait for `RUNNING`, then grab the service URL + bearer token from the console (*
 
 ### 2. Connect a coding agent
 
-Point Claude Code or Cursor at the served model — full steps in
-[`part2-connect-clients-direct/`](./part2-connect-clients-direct/README.md). In short: Claude Code reaches a
+Point Claude Code, Codex, or Cursor at the served model — full steps in
+[`part2-connect-clients-direct/`](./part2-connect-clients-direct/README.md). In short: Claude Code and Codex reach a
 workspace-hosted model over an SSH tunnel (with Brave web-search MCP); Cursor uses the public service URL + token.
 
 ### 3. (Optional) Deploy the optimized service
