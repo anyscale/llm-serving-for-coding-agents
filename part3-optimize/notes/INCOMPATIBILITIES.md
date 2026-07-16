@@ -1,10 +1,16 @@
 # Optimization Compatibility Notes
 
-Read this before changing toggles in `serve_qwen3_6_27b_optimized.py`.
+Read this before changing toggles in
+[`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py).
 
 These findings were measured or root-caused on `qwen3.6-27b` FP8, 1× RTX PRO 6000 96 GB
 (`g7e.4xlarge`), `ray-llm:2.56.0-py312-cu130`, and vLLM 0.22.0. Full numbers are in
 [`BENCHMARKS.md`](BENCHMARKS.md).
+
+## Claude Code Compatibility
+
+The Ray LLM 2.56.0 base image's vLLM 0.22.0 rejects Claude Code's current Messages payload. Keep the
+Part 3 `Containerfile` override at vLLM 0.23.0 or newer; vLLM 0.23.0 was validated with Claude Code 2.1.201.
 
 ## Hard Incompatibilities
 
@@ -23,8 +29,8 @@ does not resolve it in end-to-end testing.
 
 Choose one:
 
-- Keep RunAI Streamer for faster cold starts.
-- Enable MTP for ~1.89× faster decode and accept the slower HF loader.
+- Default: enable MTP for ~1.89× faster decode and accept the slower HF loader.
+- Optional cold-start path: keep RunAI Streamer for faster cold starts and turn MTP off.
 
 The control panel automatically disables `ENABLE_FAST_MODEL_LOADING` when `ENABLE_SPEC_DECODE=True`.
 
@@ -39,7 +45,7 @@ ingress puts the raw body in `pending_request.kwargs["request_body"]`, but that 
 
 Options:
 
-- Use the default `RoundRobinRouter` (recommended for this workload).
+- Use the default `RoundRobinRouter` for the single-user replay data in this tutorial.
 - If you opt into prefix routing, use `DirectStreamingPrefixCacheRouter`.
 - On Ray Serve LLM 2.57 or newer, use Ray's built-in router after
   [ray#64328](https://github.com/ray-project/ray/pull/64328) lands.
@@ -48,16 +54,18 @@ In this tutorial, direct streaming is always on. That is why prefix routing, whe
 
 ## What Composes
 
-This set works together and is enabled in `serve_qwen3_6_27b_optimized.py`:
+This set works together and is enabled in
+[`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py):
 
-- RunAI Streamer
 - torch.compile cache
 - FP8 KV cache
 - CUDA graphs
+- MTP speculative decoding (`qwen3_next_mtp`)
 - autoscale
 - direct streaming
 - tool calling (`qwen3_coder`)
 - reasoning parser (`qwen3`)
 
-The two deliberate opt-ins are `ENABLE_SPEC_DECODE` and `ENABLE_PREFIX_ROUTING`. See
-[`BENCHMARKS.md`](BENCHMARKS.md) for when either might be worth testing.
+The deliberate opt-ins are `ENABLE_FAST_MODEL_LOADING` and `ENABLE_PREFIX_ROUTING`. Fast loading is useful
+when cold-start time matters more than decode speed; prefix routing depends on traffic shape. See
+[`BENCHMARKS.md`](BENCHMARKS.md) for the spec-decode numbers and the prefix-routing guidance.

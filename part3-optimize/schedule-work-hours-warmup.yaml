@@ -1,0 +1,19 @@
+# schedule-work-hours-warmup.yaml - Anyscale scheduled job that runs warmup.sh every weekday
+# morning, so the work-hours service is warm before developers arrive.
+#
+# Apply from the part3-optimize/ directory (working_dir: resolves against the CLI's CWD):
+#   anyscale schedule apply -f schedule-work-hours-warmup.yaml
+#
+# Alternative: if you already have any box with cron (or GitHub Actions), skip this file and
+# schedule warmup.sh there directly. It is a single curl retry loop.
+job_config:
+  name: qwen3-6-27b-warmup
+  working_dir: .
+  entrypoint: bash warmup.sh
+  env_vars:
+    # Same values as part2-connect-clients-direct/.env
+    ANYSCALE_BASE_URL: "https://HOST.s.anyscaleuserdata.com/v1"  # your service URL, ends in /v1
+    ANYSCALE_API_KEY: "<service bearer token>"
+    ANYSCALE_MODEL: "qwen3.6-27b"
+cron_expression: "0 7 * * 1-5"    # 07:00 Monday-Friday
+timezone: "America/Los_Angeles"   # the cron fires in this timezone

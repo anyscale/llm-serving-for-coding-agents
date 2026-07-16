@@ -1,0 +1,33 @@
+# service-work-hours.yaml - optimized deployment for work-hours-only GPU spend.
+#
+# This is the min-replica-0 mode: idle periods scale the Serve replica to zero and allow the g7e node
+# to terminate. Pair it with warmup.sh on a weekday-morning cron
+# (schedule-work-hours-warmup.yaml) so the first developer of the day does not wait out the
+# cold start.
+#
+# Deploy from the part3-optimize/ directory (containerfile: and working_dir: resolve against the
+# CLI's CWD): anyscale service deploy -f service-work-hours.yaml --working-dir .
+name: qwen3-6-27b-fp8-rtxpro6000-work-hours
+containerfile: Containerfile
+env_vars:
+  # Direct-streaming flags: service-level so the Serve controller sees them.
+  RAY_SERVE_ENABLE_HA_PROXY: "1"
+  RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+  # Work-hours knobs read back by serve_qwen3_6_27b_optimized.py.
+  MIN_REPLICAS: "0"          # idle -> 0 replicas -> the g7e node can terminate (min_nodes: 0 below)
+  DOWNSCALE_DELAY_S: "1800"  # 30 min idle before scaling down, so a lunch-break lull != a cold start
+compute_config:
+  # Uncomment to improve spot availability by drawing from every AZ in the region:
+  # flags:
+  #   enable_cross_zone_scaling: true
+  worker_nodes:
+    # AWS g7e.4xlarge = 1x NVIDIA RTX PRO 6000 96GB (Blackwell SM120), 16 vCPU, 128 GiB host RAM; TP=1.
+    - instance_type: g7e.4xlarge
+      min_nodes: 0                 # let the GPU node terminate when the deployment sits at 0 replicas
+      max_nodes: 4                 # autoscale headroom (matches max_replicas=4)
+      # Spot cuts the GPU rate ~43% (notes/COST-ESTIMATE.md). Uncomment for spot-first with on-demand
+      # fallback; preempted replicas restart on a fresh node after the usual cold start.
+      # market_type: PREFER_SPOT
+working_dir: .
+applications:
+  - import_path: serve_qwen3_6_27b_optimized:app

@@ -3,9 +3,10 @@
 Self-host an open-source coding-assistant LLM on **Anyscale + Ray Serve LLM** and use it from
 **Claude Code, Codex, and Cursor**.
 
-This repo serves `qwen3.6-27b`, a 27B FP8 hybrid-reasoning and tool-calling model. With **direct
-streaming** enabled, the served model exposes the native Anthropic and OpenAI APIs the agents expect —
-no separate proxy.
+This repo serves `qwen3.6-27b`, a 27B FP8 hybrid-reasoning and tool-calling model that
+[Qwen positions as comparable to Claude Opus 4.5](https://qwen.ai/blog?id=qwen3.6-27b). With
+**direct streaming** enabled, one Anyscale service exposes the native APIs expected by all three agents,
+without running a separate proxy.
 
 ## What This Repo Shows
 
@@ -64,22 +65,84 @@ workspace-hosted model over an SSH tunnel (with Brave web-search MCP); Cursor us
 
 ### 3. (Optional) Deploy the optimized service
 
-The Part 1 deployment uses 4× L4 GPUs. Part 3 optimizes for a single **RTX PRO 6000 96 GB** GPU with FP8,
-256K context, and faster cold starts:
+The Part 1 deployment uses 4× L4 GPUs. Part 3 optimizes the service for a single **RTX PRO 6000 96 GB**
+(`g7e.4xlarge`) GPU with TP=1, FP8 weights, FP8 KV cache, full 256K context, MTP speculative decoding, and
+autoscale 1→4:
 
 ```bash
 cd ../part3-optimize
-anyscale service deploy -f service_optimized.yaml
+anyscale service deploy -f service-always-on.yaml --working-dir .
 ```
 
-Optimizations include:
+Measured performance gains and options include:
 
-- **RunAI Streamer** — loads weights from S3 directly to GPU (~25 s vs ~85 s).
-- **Torch.compile cache** — restores prebuilt caches from S3 (~9 s vs ~74 s).
-- **FP8 KV cache** — halves KV memory so the full 256K context fits.
-- **CUDA graphs** — ~2.87× decode speedup on Blackwell.
-- **Autoscale** — scales 1→4 replicas with round-robin routing.
+- **MTP speculative decoding** — default for coding-agent traffic; improves decode **1.89×**, from 45.6 tok/s to 86.4 tok/s.
+- **RunAI Streamer** — optional cold-start path; reduces cold weight-load time **3.4×**, from ~85 s to ~25 s, but cannot be combined with MTP on vLLM 0.22.0.
+- **Torch.compile cache** — reduces compile startup time **8.5×**, from 74.5 s to 8.8 s.
+- **FP8 KV cache** — doubles 256K-context KV concurrency, from ~3.27× to 6.53×.
+- **CUDA graphs** — improves decode throughput **2.87×**, from 15.9 tok/s to 45.6 tok/s.
+- **Autoscale** — grows serving capacity from 1 to 4 replicas with round-robin routing.
 
-Then point your agent at the new service URL (Part 2). See the [Part 3 README](./part3-optimize/README.md)
-for toggle defaults, [`BENCHMARKS.md`](./part3-optimize/BENCHMARKS.md) for measured numbers, and
-[`NOTES-incompatibilities.md`](./part3-optimize/NOTES-incompatibilities.md) for knobs that can't be combined.
+Deployment options include:
+
+- **Always-on config** — [`part3-optimize/service-always-on.yaml`](./part3-optimize/service-always-on.yaml)
+  keeps one warm replica online for min-replica-1 service behavior.
+- **Work-hours config** — [`part3-optimize/service-work-hours.yaml`](./part3-optimize/service-work-hours.yaml)
+  uses min replicas 0 plus [`warmup.sh`](./part3-optimize/warmup.sh) to target
+  work-hours-only GPU spend; verify the `g7e` node actually terminates after idle before relying on
+  the savings.
+
+Then point your agent at the new service URL (Part 2). See the [`Part 3 README`](./part3-optimize/README.md)
+for toggle defaults and the work-hours caveat, [`BENCHMARKS.md`](./part3-optimize/notes/BENCHMARKS.md) for
+measured numbers, and [`INCOMPATIBILITIES.md`](./part3-optimize/notes/INCOMPATIBILITIES.md) for knobs that
+can't be combined.
+
+## Collecting Real Claude Code Session Data for Benchmarking
+
+The Part 3 numbers in [`BENCHMARKS.md`](./part3-optimize/notes/BENCHMARKS.md) were measured by replaying
+real Claude Code sessions rather than synthetic prompts. Claude Code saves every session locally as JSONL
+(one JSON object per line) at:
+
+```
+~/.claude/projects/<project>/<session-id>.jsonl
+```
+
+where `<project>` is your working-directory path with non-alphanumeric characters replaced by `-` — a
+project at `/Users/alice/code/myapp` becomes `-Users-alice-code-myapp`.
+
+Copy the sessions you want to benchmark with, then ask your coding agent to extract the per-request token
+counts and replay them against the service. Transcripts contain your source code and prompts, so treat
+trace files like source code.
+
+## How Much Does It Save?
+
+The simple planning number is **~50 registered developers per RTX PRO 6000 GPU**. The GPU can hold
+roughly **24 average-length active cached sessions** at once, and the lower planning number leaves
+room for long prompts, work-hour spikes, and several developers asking the model to work at the same
+time.
+
+On that sizing, always-on self-hosting is about **$58 per developer-month**:
+
+- **Self-hosted:** about **$2,900/month per GPU**, or **$58/dev-month** at 50 developers/GPU.
+- **Subscription seats:** about **$200/dev-month** for Max-20x/Ultra-class plans.
+- **Token-metered usage:** about **$800/dev-month** for heavy API or enterprise-tier usage; Pylon
+  measured about **$780/dev-month**.
+
+For a 100-developer team, plan on **2+ GPUs during busy periods**. The always-on base case is about
+**$5.8K/month**, compared with **$20K/month** for seats or **$80K/month** for token-metered billing.
+That works out to roughly **$14.2K/month saved vs seats** and **$74.2K/month saved vs token billing**.
+
+Work-hours mode can be cheaper if the GPU nodes really shut down outside the workday. In that case,
+the target is about **$840/month per GPU**, or **$17/dev-month** at 50 developers/GPU. For the same
+100-developer planning case, that is about **$18.3K/month saved vs seats** and **$78.3K/month saved
+vs token billing**.
+
+The break-even point is small because the GPU is a shared fixed cost: about **15 developers** versus
+subscription seats for always-on, about **4 developers** versus seats for work-hours, and **1–4
+developers** versus token-metered billing.
+
+These savings only matter if the model is good enough for the same coding-agent work. The quality
+case is that [Qwen's launch post compares Qwen3.6-27B with Claude Opus 4.5](https://qwen.ai/blog?id=qwen3.6-27b),
+but teams should still validate it on their own repos and workflows. See
+[`part3-optimize/notes/COST-ESTIMATE.md`](./part3-optimize/notes/COST-ESTIMATE.md) for the full
+savings tables, token math, and caveats.

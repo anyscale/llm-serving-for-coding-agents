@@ -2,17 +2,24 @@
 #
 # OPTIMIZED deployment for 1x NVIDIA RTX PRO 6000 (96 GB Blackwell, AWS g7e.4xlarge), TP=1.
 # Every optimization is a toggle in the CONTROL PANEL below — flip each ON/OFF to see its effect.
-# The defaults are the validated optimized setup: FP8 weights + FP8 KV + full 256K context (6.53×
-# concurrency), CUDA graphs, fast S3 model loading, and the prebuilt compile cache.
-# Full measurements + the "knobs that can't be combined" matrix: BENCHMARKS.md / NOTES-incompatibilities.md.
+# The defaults are the validated coding-agent setup: FP8 weights + FP8 KV + full 256K context (6.53×
+# concurrency), CUDA graphs, MTP speculative decoding, and the prebuilt compile cache. Fast S3 model
+# loading is kept below as an opt-in cold-start alternative, but it is not the default because it conflicts
+# with MTP on vLLM 0.22.0.
+# Full measurements + the "knobs that can't be combined" matrix:
+# notes/BENCHMARKS.md / notes/INCOMPATIBILITIES.md.
 
 # ════════════════════════════════ OPTIMIZATION CONTROL PANEL ════════════════════════════════
 # Flip each ON/OFF. Mutually-exclusive combos are flagged with ⚠ (and enforced by a guard below).
 
-# (1) FAST MODEL LOADING — RunAI Streamer streams FP8 weights S3 -> GPU (~85s -> ~25s cold start).
+# (1) FAST MODEL LOADING — optional cold-start path, not the coding-agent default.
+#     RunAI Streamer streams FP8 weights S3 -> GPU (~85s -> ~25s cold start).
 #     Needs runai-model-streamer in the image (Containerfile) + cluster S3 read access.
-#     ⚠ Mutually exclusive with ENABLE_SPEC_DECODE (vllm#42060).  OFF -> plain Hugging Face download.
-ENABLE_FAST_MODEL_LOADING = True
+#     ⚠ Mutually exclusive with ENABLE_SPEC_DECODE (vllm#42060). To opt into fast loading instead of
+#     MTP decode speed, set:
+#       ENABLE_SPEC_DECODE = False
+#       ENABLE_FAST_MODEL_LOADING = True
+ENABLE_FAST_MODEL_LOADING = False
 
 # (2) COMPILE CACHE — download the prebuilt inductor + AOT torch.compile caches from S3 so a cold replica
 #     skips the whole compile (validated 74.5s -> 8.8s).  OFF -> each fresh replica compiles cold.
@@ -23,23 +30,25 @@ ENABLE_COMPILE_CACHE = True
 ENABLE_FP8_KV_CACHE = True
 
 # (4) CUDA GRAPHS — the single biggest free decode win (~2.87x on Blackwell).  ON = no enforce_eager.
-#     OFF -> enforce_eager=True (only to debug, or to fit spec-decode on a small GPU; see NOTES).
+#     OFF -> enforce_eager=True (only to debug, or to fit spec-decode on a small GPU; see notes/).
 ENABLE_CUDA_GRAPHS = True
 
-# (5) SPECULATIVE DECODING (MTP) — ~1.9x decode on RTX PRO 6000, coherent output (the #40880
-#     degenerate-output bug does NOT occur on Blackwell).  ⚠ Needs the HF loader, so it turns FAST MODEL
-#     LOADING off (vllm#42060): you trade the fast S3 cold-start for the 1.9x decode.  Default OFF.  See BENCHMARKS.md.
-ENABLE_SPEC_DECODE = False
+# (5) SPECULATIVE DECODING (MTP) — default ON for coding-agent traffic.
+#     ~1.9x decode on RTX PRO 6000, coherent output (the #40880 degenerate-output bug does NOT occur on
+#     Blackwell). ⚠ Needs the HF loader, so it turns FAST MODEL LOADING off (vllm#42060): you trade the
+#     fast S3 cold-start for faster multi-token generation during agent work. See notes/BENCHMARKS.md.
+ENABLE_SPEC_DECODE = True
 
-# (6) PREFIX-AWARE ROUTING — send a session's turns to the replica that cached its prefix. Measured to
-#     HOTSPOT badly (up to ~263x worse TTFT than round-robin; still ~39x even with many users + a clean
-#     shared prefix — see BENCHMARKS.md §6) — keep OFF unless you have many DISTINCT large prefixes and
-#     validate on YOUR traffic. Only matters with max_replicas > 1.
+# (6) PREFIX-AWARE ROUTING — send a session's turns to the replica that cached its prefix. Keep OFF for the
+#     single-user coding-agent trace used here: most requests share the same system prompts, skills, and
+#     harness context, so round-robin still benefits from each replica's local vLLM prefix cache. Consider
+#     enabling only for multi-user traffic with diverse byte-stable prefixes, then tune the imbalance knobs
+#     so affinity does not overload one replica. Only matters with max_replicas > 1.
 ENABLE_PREFIX_ROUTING = False
 
 # DIRECT STREAMING is REQUIRED for this demo (Parts 1 & 2 connect Claude Code / Codex / Cursor straight to
 # native /v1/messages + /v1/responses), so it is NOT a toggle — it's always on. It's enabled at the SERVICE
-# level in service_optimized.yaml `env_vars` (RAY_SERVE_ENABLE_HA_PROXY + RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING):
+# level in the service YAML `env_vars` (RAY_SERVE_ENABLE_HA_PROXY + RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING):
 # the Ray Serve *controller* reads those at startup, while a runtime_env reaches only replicas (the deploy
 # fails "ingress_request_router requires HAProxy" otherwise). Keep those two vars in the YAML — don't remove them.
 # ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -50,6 +59,8 @@ if ENABLE_SPEC_DECODE and ENABLE_FAST_MODEL_LOADING:
     print("[config] ENABLE_SPEC_DECODE=True -> disabling ENABLE_FAST_MODEL_LOADING "
           "(RunAI Streamer conflicts with MTP, vllm#42060); using the HF loader instead.")
     ENABLE_FAST_MODEL_LOADING = False
+
+import os
 
 from ray.serve.llm import LLMConfig, build_openai_app
 
@@ -104,7 +115,7 @@ if ENABLE_SPEC_DECODE:
     model_source = HF_SOURCE
     # num_speculative_tokens=3 is the measured sweet spot on the real agent replay: +24% out tok/s,
     # +44% turns/s, -19% TPOT vs 2. 4 REGRESSES below 2 (draft/verify overhead > acceptance gain).
-    # See BENCHMARKS.md knob 5. (MTP served the traces' ~73K-tok prompts with 0 errors on vLLM 0.22.)
+    # See notes/BENCHMARKS.md knob 5. (MTP served the traces' ~73K-tok prompts with 0 errors on vLLM 0.22.)
     engine_kwargs["speculative_config"] = {"method": "qwen3_next_mtp", "num_speculative_tokens": 3}
 
 # (2) Compile cache: point vLLM at the cache_dir + download both caches from S3 before engine init.
@@ -122,19 +133,26 @@ if ENABLE_COMPILE_CACHE:
 # ── Deployment / autoscaling ─────────────────────────────────────────────────
 deployment_config = dict(
     autoscaling_config=dict(
-        min_replicas=1,            # always-on baseline: no cold start during work hours
+        # 1 (default) = always-on: no cold start during work hours. service-work-hours.yaml
+        # sets MIN_REPLICAS=0 (+ compute min_nodes: 0) so idle nights/weekends cost nothing — pair it
+        # with warmup.sh on a weekday-morning cron; cost math in notes/COST-ESTIMATE.md.
+        min_replicas=int(os.environ.get("MIN_REPLICAS", "1")),
         max_replicas=4,            # scale out for peak; each replica = 1 RTX PRO 6000 node (g7e.4xlarge)
         target_ongoing_requests=8,  # CONSERVATIVE, untested on Pro 6000 — scale out early so the autoscaler
                                     # doesn't pile cold ~73K-tok prefills on one GPU (TTFT/preemption). TODO: measure
-                                    # the Pro 6000 capacity cliff (BENCHMARKS "TODO") and tune; raise toward 16 if prompts cache well.
+                                    # the Pro 6000 capacity cliff (notes/BENCHMARKS.md "TODO") and tune; raise toward 16 if prompts cache well.
         upscale_delay_s=30,
-        downscale_delay_s=600,
+        # service-work-hours.yaml raises this to 1800 so a lunch-break lull doesn't trigger a
+        # mid-day cold start.
+        downscale_delay_s=int(os.environ.get("DOWNSCALE_DELAY_S", "600")),
     ),
     max_ongoing_requests=64,
 )
 
-# (6) Prefix-aware routing (only with max_replicas > 1 AND diverse prefixes; tune imbalanced_threshold).
+# (6) Prefix-aware routing (only with max_replicas > 1 AND diverse stable prefixes).
 if ENABLE_PREFIX_ROUTING:
+    # Tune these thresholds on real traffic. Too much affinity can overload the one replica with the closest
+    # prefix cache, even when another replica has spare capacity.
     # Direct streaming is always on here, and the stock PrefixCacheAffinityRouter HANGS under it (it can't
     # read the raw body the direct-streaming ingress forwards). So use the DirectStreamingPrefixCacheRouter
     # subclass in direct_streaming_prefix_router.py, which parses that body. Upstream fix:
@@ -147,7 +165,7 @@ if ENABLE_PREFIX_ROUTING:
     )
 
 # NOTE: accelerator_type is intentionally omitted — Ray Serve LLM's LLMConfig enum rejects "RTX-PRO-6000".
-# service_optimized.yaml pins the g7e RTX PRO 6000 node and the replica's GPU request places there.
+# The service YAML pins the g7e RTX PRO 6000 node and the replica's GPU request places there.
 llm_kwargs = dict(
     model_loading_config=dict(model_id=MODEL_ID, model_source=model_source),
     deployment_config=deployment_config,
