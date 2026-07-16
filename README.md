@@ -13,7 +13,7 @@ without running a separate proxy.
 | Step | Goal | Folder |
 |---|---|---|
 | 1 | Deploy `qwen3.6-27b` on Anyscale with Ray Serve LLM. | [`part1-deploy-naive/`](./part1-deploy-naive/) |
-| 2 | Connect Claude Code, Codex, and Cursor to the served model. | [`part2-connect-clients-direct/`](./part2-connect-clients-direct/) |
+| 2 | Connect Claude Code, Codex, and Cursor to the served model. | [workspace](./part2-connect-clients-ray-summit-demo-only/) · [service](./part2-connect-clients-production/) |
 | 3 | Optimize the deployment for a 1x RTX PRO 6000 with 256K FP8 context. | [`part3-optimize/`](./part3-optimize/) |
 
 ## API Endpoints (via Direct Streaming)
@@ -44,7 +44,7 @@ With direct streaming enabled, the deployment exposes each agent's expected API 
 - An Anyscale account and the Anyscale CLI (`pip install anyscale`, then `anyscale login`).
 - Claude Code, Codex, and/or Cursor.
 - The Ray LLM image `anyscale/ray-llm:2.56.0-py312-cu130` (vLLM 0.22.0) for the naive service. Claude Code's
-  `/v1/messages` needs **vLLM ≥ 0.23** — see [Part 2](./part2-connect-clients-direct/README.md).
+  `/v1/messages` needs **vLLM ≥ 0.23** — see [Part 2](./part2-connect-clients-production/README.md).
 
 ## Quick Start
 
@@ -59,9 +59,10 @@ Wait for `RUNNING`, then grab the service URL + bearer token from the console (*
 
 ### 2. Connect a coding agent
 
-Point Claude Code, Codex, or Cursor at the served model — full steps in
-[`part2-connect-clients-direct/`](./part2-connect-clients-direct/README.md). In short: Claude Code and Codex reach a
-workspace-hosted model over an SSH tunnel (with Brave web-search MCP); Cursor uses the public service URL + token.
+Point Claude Code, Codex, or Cursor at the served model. Two paths:
+[**workspace**](./part2-connect-clients-ray-summit-demo-only/README.md) — Claude Code and Codex reach a
+workspace-hosted model over an SSH tunnel (with Brave web-search MCP); and
+[**service**](./part2-connect-clients-production/README.md) — all three connect to the public service URL + token.
 
 ### 3. (Optional) Deploy the optimized service
 

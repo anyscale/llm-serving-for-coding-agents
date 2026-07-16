@@ -114,4 +114,4 @@ To cut the GPU rate another ~43%, uncomment `market_type: PREFER_SPOT` (and the 
 preempted replicas recover in about the ~3-minute cold start. On-demand vs spot pricing is compared
 in [`notes/COST-ESTIMATE.md`](notes/COST-ESTIMATE.md).
 
-← Back: [Part 2](../part2-connect-clients-direct/README.md) · Overview: [top-level README](../README.md)
+← Back: [Part 2](../part2-connect-clients-production/README.md) · Overview: [top-level README](../README.md)

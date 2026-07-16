@@ -11,7 +11,7 @@ job_config:
   working_dir: .
   entrypoint: bash warmup.sh
   env_vars:
-    # Same values as part2-connect-clients-direct/.env
+    # Same ANYSCALE_BASE_URL / ANYSCALE_API_KEY the Part 2 service clients use
     ANYSCALE_BASE_URL: "https://HOST.s.anyscaleuserdata.com/v1"  # your service URL, ends in /v1
     ANYSCALE_API_KEY: "<service bearer token>"
     ANYSCALE_MODEL: "qwen3.6-27b"

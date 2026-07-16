@@ -1,6 +1,6 @@
 # service_naive.yaml — the NAIVE baseline. 4x L4, single replica.
 # Exposes native /v1/chat/completions + /v1/messages + /v1/responses via DIRECT STREAMING
-# (see ../part2-connect-clients-direct/). Direct streaming needs two flags in the Ray Serve
+# (see ../part2-connect-clients-ray-summit-demo-only/). Direct streaming needs two flags in the Ray Serve
 # *controller's* environment; set them as SERVICE-LEVEL env_vars (below) — Anyscale applies these
 # cluster-wide, so the controller inherits them, with NO custom image. (A per-deployment runtime_env
 # reaches only the replicas, not the controller, so the deploy would fail "ingress_request_router
