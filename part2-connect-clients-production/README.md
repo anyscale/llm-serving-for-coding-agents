@@ -15,9 +15,10 @@ streaming exposes all three native APIs from the one service:
 
 ## Set your service URL + token
 
-The launcher scripts have **no baked-in service** — they read yours from the environment. Get both from
-the Anyscale console → **Services → your service → Query** (click **Query**, then copy `base_url` +
-`token`), then export them, appending `/v1` to the `base_url`:
+The launcher scripts have **no baked-in service** — they use yours. Get both from the Anyscale console →
+**Services → your service → Query** (click **Query**, then copy `base_url` + `token`). When you run a
+script it **prompts** for whatever isn't already set; to skip the prompts, export them first (append
+`/v1` to the `base_url`):
 
 ```bash
 export ANYSCALE_BASE_URL=https://<your-service>.s.anyscaleuserdata.com/v1   # base_url + /v1
@@ -30,8 +31,8 @@ export ANYSCALE_API_KEY=<your service bearer token>
 
 ## Claude Code / Codex (terminal)
 
-Run from **this folder** so the Brave MCP config loads (`.mcp.json`, `.codex/config.toml`), after
-exporting your service URL + token (above):
+Run from **this folder** so the Brave MCP config loads (`.mcp.json`, `.codex/config.toml`). Each script
+prompts for your service URL + token if they aren't already exported:
 
 ```bash
 export BRAVE_API_KEY=…        # web search via the local Brave MCP
@@ -40,9 +41,9 @@ export BRAVE_API_KEY=…        # web search via the local Brave MCP
 ./codex-service.sh            # Codex -> /v1/responses  (npm i -g @openai/codex)
 ```
 
-Both scripts read `ANYSCALE_BASE_URL` / `ANYSCALE_API_KEY` from your environment — if either is unset,
-the script tells you what to export and exits — and pin the model to `qwen3.6-27b`. Claude Code's
-`/v1/messages` needs the service on **vLLM ≥ 0.23** (0.22 rejects a `system` role inside `messages[]`).
+Both scripts take `ANYSCALE_BASE_URL` / `ANYSCALE_API_KEY` from your environment, prompting for either
+one that isn't set, and pin the model to `qwen3.6-27b`. Claude Code's `/v1/messages` needs the service
+on **vLLM ≥ 0.23** (0.22 rejects a `system` role inside `messages[]`).
 
 ## Cursor (GUI)
 

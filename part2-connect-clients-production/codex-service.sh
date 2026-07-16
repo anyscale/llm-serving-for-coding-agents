@@ -4,7 +4,7 @@ set -euo pipefail
 # DEMO-ONLY: launch Codex against the PUBLIC Anyscale Service's /v1/responses (direct streaming).
 # The production pattern — shown, not run live at the event.
 #
-# Set your service URL + token first — no defaults:
+# Set ANYSCALE_BASE_URL + ANYSCALE_API_KEY, or the script prompts you for them:
 #   ANYSCALE_BASE_URL (must end in /v1)   ANYSCALE_API_KEY (bearer token)
 # Get both from the Anyscale console -> Services -> your service -> Query.
 #
@@ -13,15 +13,18 @@ set -euo pipefail
 #   ./codex-service.sh                      # interactive
 #   ./codex-service.sh "explain this repo"  # a prompt passes straight through
 
+# Prompt for anything not already in the environment (values from the console Query panel).
 if [[ -z "${ANYSCALE_BASE_URL:-}" || -z "${ANYSCALE_API_KEY:-}" ]]; then
-  cat >&2 <<'EOF'
-codex-service: set your service URL and token first, then re-run:
-
-  export ANYSCALE_BASE_URL=https://<your-service>.s.anyscaleuserdata.com/v1   # must end in /v1
-  export ANYSCALE_API_KEY=<your service bearer token>
-
-Get both from the Anyscale console -> Services -> your service -> Query.
-EOF
+  echo "codex-service: enter your Anyscale Service details (console -> Services -> your service -> Query)." >&2
+fi
+if [[ -z "${ANYSCALE_BASE_URL:-}" ]]; then
+  read -rp "  service base URL (ends in /v1): " ANYSCALE_BASE_URL || true
+fi
+if [[ -z "${ANYSCALE_API_KEY:-}" ]]; then
+  read -rsp "  service bearer token: " ANYSCALE_API_KEY || true; echo >&2
+fi
+if [[ -z "${ANYSCALE_BASE_URL:-}" || -z "${ANYSCALE_API_KEY:-}" ]]; then
+  echo "codex-service: base URL and token are both required." >&2
   exit 1
 fi
 BASE="${ANYSCALE_BASE_URL%/}"
