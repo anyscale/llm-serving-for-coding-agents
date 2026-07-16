@@ -7,6 +7,11 @@ These findings were measured or root-caused on `qwen3.6-27b` FP8, 1× RTX PRO 60
 (`g7e.4xlarge`), `ray-llm:2.56.0-py312-cu130`, and vLLM 0.22.0. Full numbers are in
 [`BENCHMARKS.md`](BENCHMARKS.md).
 
+## Claude Code Compatibility
+
+The Ray LLM 2.56.0 base image's vLLM 0.22.0 rejects Claude Code's current Messages payload. Keep the
+Part 3 `Containerfile` override at vLLM 0.23.0 or newer; vLLM 0.23.0 was validated with Claude Code 2.1.201.
+
 ## Hard Incompatibilities
 
 ### 1. RunAI Streamer and MTP Spec Decode
