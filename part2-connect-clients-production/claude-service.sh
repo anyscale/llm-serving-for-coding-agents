@@ -5,8 +5,9 @@ set -euo pipefail
 # The service serves /v1/messages via direct streaming; Claude Code POSTs to
 # ${ANTHROPIC_BASE_URL}/v1/messages. This is the production pattern — shown, not run live at the event.
 #
-# Defaults point at the shared demo service below. Override for your own service:
+# Set your service URL + token first — no defaults:
 #   ANYSCALE_BASE_URL (must end in /v1)   ANYSCALE_API_KEY (bearer token)
+# Get both from the Anyscale console -> Services -> your service -> Query.
 #
 # Usage:
 #   ./claude-service.sh            # interactive
@@ -14,8 +15,17 @@ set -euo pipefail
 #
 # Prereq: export BRAVE_API_KEY=…  (for the Brave web-search MCP in .mcp.json)
 
-ANYSCALE_BASE_URL="${ANYSCALE_BASE_URL:-https://qwen3-6-27b-fp8-jgz99.cld-kvedzwag2qa8i5bj.s.anyscaleuserdata.com/v1}"
-ANYSCALE_API_KEY="${ANYSCALE_API_KEY:-fULTzITwglt9TAn0kns0RAAIlFDxOk_F07xKkfPVpm0}"
+if [[ -z "${ANYSCALE_BASE_URL:-}" || -z "${ANYSCALE_API_KEY:-}" ]]; then
+  cat >&2 <<'EOF'
+claude-service: set your service URL and token first, then re-run:
+
+  export ANYSCALE_BASE_URL=https://<your-service>.s.anyscaleuserdata.com/v1   # must end in /v1
+  export ANYSCALE_API_KEY=<your service bearer token>
+
+Get both from the Anyscale console -> Services -> your service -> Query.
+EOF
+  exit 1
+fi
 MODEL="${ANYSCALE_MODEL:-qwen3.6-27b}"
 
 command -v claude >/dev/null 2>&1 || { echo "claude-service: claude CLI not on PATH." >&2; exit 1; }
