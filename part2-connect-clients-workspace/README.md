@@ -8,7 +8,7 @@ there's no proxy and no `pip install`. Web search comes from a local **Brave Sea
 > The production pattern (a public Anyscale Service for Claude Code, Codex, and Cursor) is in
 > [`../part2-connect-clients-production/`](../part2-connect-clients-production/README.md).
 
-## One command
+## Claude Code / Codex (terminal)
 
 Each launcher opens the SSH tunnel for you (if it isn't already open), waits for the model, starts the
 agent, and closes the tunnel when you quit. Just pass your workspace name. Run from **this folder** so
@@ -24,13 +24,12 @@ export BRAVE_API_KEY=…                      # web search
 Launch Claude Code first and `codex-workspace.sh` reuses the tunnel it already opened (same
 `localhost:8000`). First turn is slow (reasoning model on 4× L4) — not a hang.
 
-## What the scripts do
-
-- Open `anyscale workspace_v2 ssh -n <workspace-name> -- -N -L 8000:localhost:8000` in the background
-  (skipped if `localhost:8000` already answers) and close it on exit.
-- Point the agent at `localhost:8000` with a dummy token (workspace `serve run` has no auth) and pin
-  every model tier to `qwen3.6-27b`.
-- Add the local **Brave Search** MCP for web search — the agents' built-in web tools don't work against
+Under the hood, each script:
+- opens `anyscale workspace_v2 ssh -n <workspace-name> -- -N -L 8000:localhost:8000` in the background
+  (skipped if `localhost:8000` already answers) and closes it on exit;
+- points the agent at `localhost:8000` with a dummy token (workspace `serve run` has no auth) and pins
+  every model tier to `qwen3.6-27b`;
+- adds the local **Brave Search** MCP for web search — the agents' built-in web tools don't work against
   a self-hosted model.
 
 ## Troubleshooting
