@@ -74,8 +74,8 @@ also exists — handy for a service *without* direct streaming — but this repo
 >
 > In a **workspace**, set both as **workspace environment variables** (Dependencies → environment
 > variables) so they apply cluster-wide and the controller inherits them at boot; if you add them to an
-> already-running workspace, restart it so the controller comes back with the vars. Stock image — no
-> custom build. To check, curl the endpoint: `/v1/messages` and `/v1/responses` should respond (not
+> already-running workspace, restart it so the controller comes back with the vars. To check, curl the
+> endpoint: `/v1/messages` and `/v1/responses` should respond (not
 > `404`); a `404` means direct streaming isn't active. *(Validated: all three native endpoints return
 > 200.)*
 >
@@ -84,8 +84,11 @@ also exists — handy for a service *without* direct streaming — but this repo
 
 ## Why this image / GPU
 
-- **Image `anyscale/ray-llm:2.56.0-py312-cu130`** — ships vLLM 0.22.0, new enough for this model. The
-  older GA `ray-llm:2.55.x` ships vLLM 0.18 (too old) and fails to load Qwen3.6.
+- **Image `us-docker.pkg.dev/anyscale-workspace-templates/workspace-templates/llm-serving-for-coding-agents:2.56.0`**
+  — a prebuilt public image (pullable with no creds) built on `anyscale/ray-llm:2.56.0-py312-cu130`, which
+  upgrades the base's vLLM 0.22.0 to **0.23.0** so the native `/v1/messages` endpoint accepts Claude Code's
+  request schema. Stock `ray-llm:2.56.0` (vLLM 0.22.0) works for Codex and Cursor, but 0.22.0 rejects Claude
+  Code's `system` role; the older GA `ray-llm:2.55.x` ships vLLM 0.18 (too old) and fails to load Qwen3.6.
 - **4× L4 / TP=4** — a common, widely-available GPU shape (`g6.12xlarge`) used here as the baseline. It's
   not optimal — the FP8 weights fit on a single bigger GPU; an optimized variant moves to **1× RTX PRO
   6000 96GB** (TP=1) to serve the model's full 256K context in FP8.
