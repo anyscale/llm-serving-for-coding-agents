@@ -10,8 +10,9 @@ streaming exposes all three native APIs from the one service:
 | **Codex** | `/v1/responses` | `./codex-service.sh` |
 | **Cursor** | `/v1/chat/completions` | GUI (below) |
 
-> This folder is for **demonstration** — you don't need to run it. The live hands-on uses the workspace
-> path in [`../part2-connect-clients-ray-summit-demo-only/`](../part2-connect-clients-ray-summit-demo-only/README.md).
+> The [workspace method](../part2-connect-clients-workspace/README.md) is quickest for local play (no
+> public URL needed). Use this **service** path when you want a shareable endpoint, or for **Cursor** —
+> which routes through its own cloud and can't reach `localhost`.
 
 ## Set your service URL + token
 

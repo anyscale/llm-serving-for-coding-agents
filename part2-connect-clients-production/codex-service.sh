@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# DEMO-ONLY: launch Codex against the PUBLIC Anyscale Service's /v1/responses (direct streaming).
-# The production pattern — shown, not run live at the event.
+# Launch Codex against a PUBLIC Anyscale Service's /v1/responses (the production path, vs the workspace tunnel).
+# The production pattern (public URL + token).
 #
 # Set ANYSCALE_BASE_URL + ANYSCALE_API_KEY + ANYSCALE_MODEL, or the script prompts for all three:
 #   ANYSCALE_BASE_URL (ends in /v1)   ANYSCALE_API_KEY (bearer token)   ANYSCALE_MODEL (default qwen3.6-27b)

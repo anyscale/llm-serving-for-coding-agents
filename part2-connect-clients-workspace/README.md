@@ -1,6 +1,6 @@
-# Part 2 (demo) — connect from the workspace over localhost
+# Part 2 (workspace) — connect over localhost
 
-The quick path used in the live demo: the model runs inside an **Anyscale workspace** (Part 1's
+The quick path: the model runs inside an **Anyscale workspace** (Part 1's
 `serve run`), and your terminal agent reaches it over an SSH tunnel to `localhost:8000`. Direct
 streaming exposes the native endpoints — `/v1/messages` (Claude Code) and `/v1/responses` (Codex) — so
 there's no proxy and no `pip install`. Web search comes from a local **Brave Search MCP**.

@@ -61,7 +61,7 @@ no proxy needed:
 | `POST /v1/messages` | Claude Code (Anthropic) |
 | `POST /v1/responses` | Codex (OpenAI Responses) |
 
-Connect your agents in **[Part 2](../part2-connect-clients-ray-summit-demo-only/)** — point Claude Code, Codex, and
+Connect your agents in **[Part 2](../part2-connect-clients-workspace/)** — point Claude Code, Codex, and
 Cursor **directly** at the paths above, **no proxy, no `pip install`**. (A LiteLLM-gateway alternative
 also exists — handy for a service *without* direct streaming — but this repo uses the direct path.)
 
@@ -111,4 +111,4 @@ also exists — handy for a service *without* direct streaming — but this repo
 > capacity should be measured with real workloads.
 
 
-→ Next: **[Part 2 — connect Claude Code / Codex / Cursor](../part2-connect-clients-ray-summit-demo-only/README.md)** (no proxy).
+→ Next: **[Part 2 — connect Claude Code / Codex / Cursor](../part2-connect-clients-workspace/README.md)** (no proxy).

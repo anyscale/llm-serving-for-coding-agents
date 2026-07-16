@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# DEMO-ONLY: launch Claude Code against the PUBLIC Anyscale Service (not the workspace tunnel).
+# Launch Claude Code against a PUBLIC Anyscale Service (the production path, vs the workspace tunnel).
 # The service serves /v1/messages via direct streaming; Claude Code POSTs to
-# ${ANTHROPIC_BASE_URL}/v1/messages. This is the production pattern — shown, not run live at the event.
+# ${ANTHROPIC_BASE_URL}/v1/messages. This is the production pattern (public URL + token).
 #
 # Set ANYSCALE_BASE_URL + ANYSCALE_API_KEY + ANYSCALE_MODEL, or the script prompts for all three:
 #   ANYSCALE_BASE_URL (ends in /v1)   ANYSCALE_API_KEY (bearer token)   ANYSCALE_MODEL (default qwen3.6-27b)
