@@ -9,6 +9,9 @@ unmeasured default is autoscale `target_ongoing_requests`, which is intentionall
 cost-reduction case, including savings vs commercial seats and token-metered API billing, see
 [`notes/COST-ESTIMATE.md`](notes/COST-ESTIMATE.md).
 
+The Part 3 image upgrades the base image's vLLM 0.22.0 to 0.23.0 for compatibility with Claude Code's
+current `/v1/messages` schema. The benchmark and compile-cache results remain measured on vLLM 0.22.0.
+
 ## What Changes
 
 | Area | [Naive](../part1-deploy-naive/serve_qwen3_6_27b_naive.py) | [Optimized](serve_qwen3_6_27b_optimized.py) |
@@ -52,7 +55,7 @@ pin the `g7e` node instead.
 - `warmup.sh` — weekday morning warmup helper for work-hours mode.
 - `notes/` — benchmark data, cost estimates, and compatibility notes.
 - `direct_streaming_prefix_router.py` — prefix-routing adapter for direct streaming, only used if you opt in.
-- `Containerfile` — `ray-llm:2.56.0` plus `runai-model-streamer`.
+- `Containerfile` — `ray-llm:2.56.0` with vLLM 0.23.0 and `runai-model-streamer`.
 
 ## Deploy
 
