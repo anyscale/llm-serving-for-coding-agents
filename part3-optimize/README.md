@@ -1,7 +1,7 @@
 # Part 3 — Optimize the deployment
 
 Part 3 turns the naive Part 1 service into a multi-user, lower-latency, cost-aware deployment. It keeps the
-same model id (`qwen3.6-27b`) and the same Part 2 clients; repoint `ANYSCALE_BASE_URL` to this service.
+same model id (`qwen3.6-27b`) and the same Part 2 clients — point them at this service's URL.
 
 The defaults are measured on the target GPU. See [`notes/BENCHMARKS.md`](notes/BENCHMARKS.md) for numbers and
 [`notes/INCOMPATIBILITIES.md`](notes/INCOMPATIBILITIES.md) for knobs that cannot be combined. The only
@@ -18,7 +18,7 @@ current `/v1/messages` schema. The benchmark and compile-cache results remain me
 |---|---|---|
 | GPU | 4× L4, TP=4 | 1× RTX PRO 6000 96 GB, TP=1 (`g7e.4xlarge`) |
 | Context | FP8, 128K | FP8, full 256K |
-| Model load | HF download, ~85 s | HF download, ~85 s by default; optional RunAI Streamer S3→GPU, ~25 s |
+| Model load | S3 download, ~85 s | HF download, ~85 s by default; optional RunAI Streamer S3→GPU, ~25 s |
 | Compile | Recompile every cold start, ~74 s | S3 torch.compile cache, ~9 s |
 | Decode | CUDA graphs only | CUDA graphs + MTP speculative decoding, ~1.9× faster decode |
 | Scaling | Single replica | Autoscale 1→4, round-robin via [`service-always-on.yaml`](service-always-on.yaml) (or 0→4 via [`service-work-hours.yaml`](service-work-hours.yaml)) |
@@ -40,7 +40,7 @@ GPU — its FP4 attention kernel is datacenter-Blackwell-only and crashes on SM1
 | `ENABLE_SPEC_DECODE` | `True` | MTP gives ~1.9× decode on the coding-agent replay. This is the default because agent work benefits more from lower TPOT than from a faster cold weight load. |
 | `ENABLE_PREFIX_ROUTING` | `False` | Optional for diverse multi-user prefixes. The single-user replay data here shares the same prompts, skills, and harness context, so round-robin is the simpler default. |
 
-Direct streaming is always on because Part 2 uses the native `/v1/messages` and `/v1/responses` endpoints.
+Direct streaming is always on because Part 2 connects Claude Code (`/v1/messages`), Codex (`/v1/responses`), and Cursor (`/v1/chat/completions`) to these native endpoints.
 It is enabled in the service YAMLs so the Serve controller sees it at startup. If you enable prefix routing,
 the service uses `DirectStreamingPrefixCacheRouter` until the upstream fix
 [ray#64328](https://github.com/ray-project/ray/pull/64328) lands in ray-llm 2.57.
@@ -70,8 +70,7 @@ cold-start time instead of decode speed, use the commented fast-loading recipe i
 `ENABLE_FAST_MODEL_LOADING=True`, upload the FP8 weights once (`hf download Qwen/Qwen3.6-27B-FP8`, then
 `aws s3 sync`), and point `S3_WEIGHTS` at that `s3://...` path.
 
-Then update `../part2-connect-clients-direct/.env`: set `ANYSCALE_BASE_URL` to this service URL and relaunch
-the clients.
+Then point your Part 2 clients at this service's URL (for Cursor, copy it from the console **Query** panel).
 
 Before turning off spec decode for fast loading, or before enabling prefix routing, read
 [`notes/BENCHMARKS.md`](notes/BENCHMARKS.md) and
@@ -115,4 +114,4 @@ To cut the GPU rate another ~43%, uncomment `market_type: PREFER_SPOT` (and the 
 preempted replicas recover in about the ~3-minute cold start. On-demand vs spot pricing is compared
 in [`notes/COST-ESTIMATE.md`](notes/COST-ESTIMATE.md).
 
-← Back: [Part 2](../part2-connect-clients-direct/README.md) · Overview: [top-level README](../README.md)
+← Back: [Part 2](../part2-connect-clients-production/README.md) · Overview: [top-level README](../README.md)

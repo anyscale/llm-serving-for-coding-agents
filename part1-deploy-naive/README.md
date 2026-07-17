@@ -3,10 +3,10 @@
 Goal: get a working OpenAI-compatible endpoint with the **least** configuration. It's deliberately
 un-optimized — the point is to prove the model serves and to give you a baseline to optimize later.
 
-**What "naive" means here:** 4× L4 (`g6.12xlarge`, TP=4), single replica, weights downloaded from
-Hugging Face on every cold start, no compile cache, no autoscaling, no speculative/routing tricks.
-It works; it's just the wrong shape for a team (≈ one concurrent user, slow cold start). **We use 4× L4
-here because that's the GPU shape available for the Ray Summit training session** — not because it's optimal.
+**What "naive" means here:** 4× L4 (`g6.12xlarge`, TP=4), single replica, weights downloaded from remote storage (could also be huggingface) on every cold start,
+no compile cache, no autoscaling, no speculative/routing tricks.
+It works; it's just the wrong shape for a team (≈ one concurrent user, slow cold start) — and 4× L4 isn't
+the optimal GPU for this model (the FP8 weights fit on a single bigger GPU; see Part 3).
 
 ## Files
 - `serve_qwen3_6_27b_naive.py` — the Ray Serve LLM app (one `LLMConfig`, built with `build_openai_app`).
@@ -15,37 +15,44 @@ here because that's the GPU shape available for the Ray Summit training session*
 
 ## Deploy
 
-```bash
-cd part1-deploy-naive
-anyscale service deploy -f service_naive.yaml
+Run it in an **Anyscale workspace** on the image + 4× L4 node from **Why this image / GPU** (below).
+Set the two direct-streaming env vars on the workspace (**Dependencies → environment variables**) so
+the Ray Serve controller inherits them at startup:
+
+```
+RAY_SERVE_ENABLE_HA_PROXY=1
+RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
 ```
 
-Wait for the service to reach **RUNNING** (`anyscale service status -n qwen3-6-27b-fp8-naive`). Then,
-in the Anyscale console → **Services → qwen3-6-27b-fp8-naive → Query**, copy:
-- the **base URL** (append `/v1` — e.g. `https://….s.anyscaleuserdata.com/v1`), and
-- a **bearer token**.
+Then, from a workspace terminal:
 
-You'll paste both into Part 2's `.env`.
+```bash
+cd part1-deploy-naive
+serve run serve_qwen3_6_27b_naive:app
+```
 
-> **Prefer to iterate interactively first?** Deploy into a Workspace instead of a Service:
-> create a workspace on the same image/compute, `anyscale workspace_v2 push` this folder, then
-> `serve run serve_qwen3_6_27b_naive:app` inside it. A Service is the right target once it works.
+`serve run` builds the app on the workspace's Ray cluster and serves it at **`http://localhost:8000`**
+(OpenAI base URL `http://localhost:8000/v1`). Leave it running — Part 2 connects Claude Code to this
+endpoint over an SSH tunnel, no public URL or token needed.
+
+> `service_naive.yaml` deploys the same app as an Anyscale **Service** (the production target):
+> `anyscale service deploy -f service_naive.yaml`. We run it in a workspace here so Part 2 can reach
+> the endpoint over `localhost`.
 
 ## Verify
 
 ```bash
-# from anywhere, with the URL + token you copied:
-export ANYSCALE_BASE_URL="https://YOUR-HOST.s.anyscaleuserdata.com/v1"
-export ANYSCALE_API_KEY="your-token"
+# In a second workspace terminal — client.py defaults to http://localhost:8000, no token needed:
+cd part1-deploy-naive
 python client.py        # sends a chat completion, prints the reply
 ```
 
-The first call after deploy/idle **cold-starts** for ~2–4 min (node provision + ~85s HF weight
-download + compile). That slowness is what an optimized deployment (fast S3 loader + compile cache) removes.
+The first call after `serve run` (or after idle) **cold-starts** for ~2–3 min (weight download +
+compile). That slowness is what an optimized deployment (fast S3 loader + compile cache) removes.
 
 ## Native multi-API endpoint (direct streaming)
 
-This deployment turns on **direct streaming**, so the one service speaks all three agent APIs natively —
+This deployment turns on **direct streaming**, so this one endpoint speaks all three agent APIs natively —
 no proxy needed:
 
 | Path | Used by |
@@ -54,33 +61,37 @@ no proxy needed:
 | `POST /v1/messages` | Claude Code (Anthropic) |
 | `POST /v1/responses` | Codex (OpenAI Responses) |
 
-Connect your agents in **[Part 2](../part2-connect-clients-direct/)** — point Claude Code, Codex, and
+Connect your agents in **[Part 2](../part2-connect-clients-workspace/)** — point Claude Code, Codex, and
 Cursor **directly** at the paths above, **no proxy, no `pip install`**. (A LiteLLM-gateway alternative
 also exists — handy for a service *without* direct streaming — but this repo uses the direct path.)
 
-> **How it's enabled (and a gotcha that bites a Service deploy):** direct streaming needs
+> **How it's enabled (and a gotcha):** direct streaming needs
 > `RAY_SERVE_ENABLE_HA_PROXY=1` + `RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1` in the Ray Serve
 > **controller's** environment — the controller reads the flag at startup (`build_app.py`). A
 > per-deployment `runtime_env` (e.g. `LLMConfig(runtime_env=…)`) reaches only the **replicas**, not the
-> controller, so setting them there makes a Service deploy fail with *"ingress_request_router requires
-> HAProxy."* The fix is **service-level `env_vars`** in `service_naive.yaml` (top-level `env_vars:`),
-> which Anyscale applies **cluster-wide** so the controller inherits them — **no custom image, stock
-> `image_uri`**. *(Validated: all three native endpoints return 200.)*
+> controller, so setting them there makes the app fail with *"ingress_request_router requires
+> HAProxy."*
 >
-> **Workspace `serve run`:** start the workspace with those two vars in its env (set them in the
-> workspace's env config, or `export` them and restart Serve), then
-> `serve run serve_qwen3_6_27b_naive:app`. To verify, curl the service — `/v1/messages` and
-> `/v1/responses` should respond (not `404`). A `404` means direct streaming isn't active; check the
-> `env_vars` in `service_naive.yaml`.
+> In a **workspace**, set both as **workspace environment variables** (Dependencies → environment
+> variables) so they apply cluster-wide and the controller inherits them at boot; if you add them to an
+> already-running workspace, restart it so the controller comes back with the vars. To check, curl the
+> endpoint: `/v1/messages` and `/v1/responses` should respond (not
+> `404`); a `404` means direct streaming isn't active. *(Validated: all three native endpoints return
+> 200.)*
+>
+> Deploying as a **Service** instead? Put the same two vars in `service_naive.yaml`'s top-level
+> `env_vars:` — Anyscale applies those cluster-wide too.
 
 ## Why this image / GPU
 
-- **Image `anyscale/ray-llm:2.56.0-py312-cu130`** — ships vLLM 0.22.0, new enough for this model. The
-  older GA `ray-llm:2.55.x` ships vLLM 0.18 (too old) and fails to load Qwen3.6.
-- **4× L4 / TP=4** — chosen for **GPU availability**: 4× L4 (`g6.12xlarge`) is the shape allocated to
-  attendees for the **Ray Summit hands-on session**, so the lab runs on it. It's not optimal — the FP8
-  weights fit on a single bigger GPU; an optimized variant moves to **1× RTX PRO 6000 96GB** (TP=1) to
-  serve the model's full 256K context in FP8.
+- **Image `us-docker.pkg.dev/anyscale-workspace-templates/workspace-templates/llm-serving-for-coding-agents:2.56.0`**
+  — a prebuilt public image (pullable with no creds) built on `anyscale/ray-llm:2.56.0-py312-cu130`, which
+  upgrades the base's vLLM 0.22.0 to **0.23.0** so the native `/v1/messages` endpoint accepts Claude Code's
+  request schema. Stock `ray-llm:2.56.0` (vLLM 0.22.0) works for Codex and Cursor, but 0.22.0 rejects Claude
+  Code's `system` role; the older GA `ray-llm:2.55.x` ships vLLM 0.18 (too old) and fails to load Qwen3.6.
+- **4× L4 / TP=4** — a common, widely-available GPU shape (`g6.12xlarge`) used here as the baseline. It's
+  not optimal — the FP8 weights fit on a single bigger GPU; an optimized variant moves to **1× RTX PRO
+  6000 96GB** (TP=1) to serve the model's full 256K context in FP8.
 
 ## KV cache dtype
 
@@ -100,4 +111,4 @@ also exists — handy for a service *without* direct streaming — but this repo
 > capacity should be measured with real workloads.
 
 
-→ Next: **[Part 2 — connect Claude Code / Codex / Cursor directly](../part2-connect-clients-direct/README.md)** (no proxy).
+→ Next: **[Part 2 — connect Claude Code / Codex / Cursor](../part2-connect-clients-workspace/README.md)** (no proxy).

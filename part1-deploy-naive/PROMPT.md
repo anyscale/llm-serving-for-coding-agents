@@ -1,0 +1,1 @@
+/anyscale-workload-llm-serving Deploy qwen3.6-27b with 4x L4 GPUs, weights located at s3://llm-guide/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/. No optimization needed. Use the prebuilt public image us-docker.pkg.dev/anyscale-workspace-templates/workspace-templates/llm-serving-for-coding-agents:2.56.0. Deploy in the Anyscale workspace <workspace-name>.

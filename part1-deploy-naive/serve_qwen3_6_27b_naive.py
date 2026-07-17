@@ -6,7 +6,6 @@
 # ── What makes it naive ─────────────────────────────────────────────────────────────
 #
 # GPU choice: 4× L4 (g6.12xlarge), tensor_parallel_size=4
-#   This is the GPU shape available for the Ray Summit training session.
 #   All 4 L4s sit on one node, connected via PCIe (no NVLink).
 #   L4 has the lowest memory bandwidth of serving GPUs (~300 GB/s),
 #   and PCIe interconnect adds communication overhead between the GPUs.
@@ -14,7 +13,7 @@
 #
 # Capacity: single replica, 652,346-token KV cache (4.98× raw capacity at 128K).
 #
-# Cold start: weights downloaded from Hugging Face every time (~85 s).
+# Cold start: weights downloaded from S3 every time (~85 s).
 #
 # Compilation: no compile cache, so each fresh replica recompiles (~90–137 s).
 #
@@ -31,16 +30,17 @@
 #
 # This is what lets Part 2 connect all three agents with no proxy and no LiteLLM.
 #
-# It's enabled by two SERVICE-LEVEL env_vars in service_naive.yaml (top-level env_vars):
+# It's enabled by two CLUSTER-LEVEL env vars. In a workspace, set them as workspace
+# environment variables; in a Service, put them in service_naive.yaml (top-level env_vars):
 #
 #   RAY_SERVE_ENABLE_HA_PROXY=1
 #   RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
 #
-# IMPORTANT: these must be service/cluster-level, NOT per-deployment runtime_env or
+# IMPORTANT: these must be cluster-level, NOT per-deployment runtime_env or
 # in-module os.environ. The Ray Serve controller reads RAY_SERVE_ENABLE_HA_PROXY at
 # startup (ray/serve/_private/build_app.py); a runtime_env only reaches the replicas,
-# so the deploy fails with "ingress_request_router requires HAProxy." Anyscale applies
-# service-level env_vars cluster-wide, so the controller inherits them.
+# so the app fails with "ingress_request_router requires HAProxy." Anyscale applies
+# cluster-level env vars across the cluster, so the controller inherits them.
 #
 # Safe here because there's no custom request router: direct streaming conflicts with
 # the stock PrefixCacheAffinityRouter, but the single-replica default RoundRobinRouter
@@ -50,7 +50,7 @@ from ray.serve.llm import LLMConfig, build_openai_app
 llm_config = LLMConfig(
     model_loading_config=dict(
         model_id="qwen3.6-27b",
-        model_source="Qwen/Qwen3.6-27B-FP8",   # plain HF download (slow cold start)
+        model_source="s3://llm-guide/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/",
     ),
     accelerator_type="L4",
     deployment_config=dict(
