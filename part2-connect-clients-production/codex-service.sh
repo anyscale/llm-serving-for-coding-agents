@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Launch Codex against a PUBLIC Anyscale Service's /v1/responses (the production path, vs the workspace tunnel).
+# Launch Codex against a PUBLIC Anyscale Service's /v1/responses (the production path).
 # The production pattern (public URL + token).
 #
 # Set ANYSCALE_BASE_URL + ANYSCALE_API_KEY + ANYSCALE_MODEL, or the script prompts for all three:

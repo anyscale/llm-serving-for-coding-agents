@@ -10,9 +10,8 @@ streaming exposes all three native APIs from the one service:
 | **Codex** | `/v1/responses` | `./codex-service.sh` |
 | **Cursor** | `/v1/chat/completions` | GUI (below) |
 
-> The [workspace method](../part2-connect-clients-workspace/README.md) is quickest for local play (no
-> public URL needed). Use this **service** path when you want a shareable endpoint, or for **Cursor** —
-> which routes through its own cloud and can't reach `localhost`.
+> Use this **service** path for a shareable public endpoint — and it's required for **Cursor**, which
+> routes through its own cloud and can't reach `localhost`.
 
 ## Set your service URL + token
 
@@ -49,7 +48,7 @@ on **vLLM ≥ 0.23** (0.22 rejects a `system` role inside `messages[]`).
 ## Cursor (GUI)
 
 Cursor routes calls through its own cloud, which refuses `localhost`/private IPs — so it needs the
-public service URL (it can't use the workspace tunnel). In **Cursor Settings → Models → OpenAI API Key**:
+public service URL. In **Cursor Settings → Models → OpenAI API Key**:
 
 1. Enable **Override OpenAI Base URL** → your service base URL **with `/v1` appended**
    (e.g. `https://<your-service>.s.anyscaleuserdata.com/v1`).

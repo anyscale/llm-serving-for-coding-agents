@@ -13,7 +13,7 @@ without running a separate proxy.
 | Step | Goal | Folder |
 |---|---|---|
 | 1 | Deploy `qwen3.6-27b` on Anyscale with Ray Serve LLM. | [`part1-deploy-naive/`](./part1-deploy-naive/) |
-| 2 | Connect Claude Code, Codex, and Cursor to the served model. | [workspace](./part2-connect-clients-workspace/) · [service](./part2-connect-clients-production/) |
+| 2 | Connect Claude Code, Codex, and Cursor to the served model. | [`part2-connect-clients-production/`](./part2-connect-clients-production/) |
 | 3 | Optimize the deployment for a 1x RTX PRO 6000 with 256K FP8 context. | [`part3-optimize/`](./part3-optimize/) |
 
 ## API Endpoints (via Direct Streaming)
@@ -64,10 +64,8 @@ Or deploy as a public Anyscale **Service** (needed for Cursor, and for sharing):
 
 ### 2. Connect a coding agent
 
-Point Claude Code, Codex, or Cursor at the served model. Two paths:
-[**workspace**](./part2-connect-clients-workspace/README.md) — Claude Code and Codex reach a
-workspace-hosted model over an SSH tunnel (with Brave web-search MCP); and
-[**service**](./part2-connect-clients-production/README.md) — all three connect to the public service URL + token.
+Point Claude Code, Codex, or Cursor at the served model via
+[**part2-connect-clients-production**](./part2-connect-clients-production/README.md) — all three connect to the public service URL + token.
 
 ### 3. (Optional) Deploy the optimized service
 
