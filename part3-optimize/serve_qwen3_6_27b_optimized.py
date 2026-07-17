@@ -90,7 +90,11 @@ engine_kwargs = dict(
     reasoning_parser="qwen3",
     tool_call_parser="qwen3_coder",   # validated: returns structured tool_calls
     enable_auto_tool_choice=True,
-    limit_mm_per_prompt={"image": 0, "video": 0},  # text-only; the recipe's language_model_only= is equivalent here (measured: no KV gain, it just zeros these limits)
+    # Image input ENABLED by default. Verified on a single-GPU 96GB shape (H100): coexists with MTP spec
+    # decode, ~52 GiB KV / 5.6x concurrency at 256K, serves images end-to-end. Set image:0 for a text-only
+    # deployment (the recipe's language_model_only= is equivalent — it just zeros these limits, no KV gain).
+    # For image-heavy prompts, watch max_pixels (mm_processor_kwargs) / KV headroom.
+    limit_mm_per_prompt={"image": 4, "video": 0},
 )
 # Attention backend: intentionally unset — on RTX PRO 6000 (SM120) + fp8 KV, vLLM 0.22 auto-selects
 # FlashInfer (its strongest Blackwell attention kernel); forcing VLLM_ATTENTION_BACKEND=FLASHINFER is a no-op.
