@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Launch Claude Code against a PUBLIC Anyscale Service (the production path, vs the workspace tunnel).
+# Launch Claude Code against a PUBLIC Anyscale Service (the production path).
 # The service serves /v1/messages via direct streaming; Claude Code POSTs to
 # ${ANTHROPIC_BASE_URL}/v1/messages. This is the production pattern (public URL + token).
 #

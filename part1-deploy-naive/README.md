@@ -32,12 +32,11 @@ serve run serve_qwen3_6_27b_naive:app
 ```
 
 `serve run` builds the app on the workspace's Ray cluster and serves it at **`http://localhost:8000`**
-(OpenAI base URL `http://localhost:8000/v1`). Leave it running — Part 2 connects Claude Code to this
-endpoint over an SSH tunnel, no public URL or token needed.
+(OpenAI base URL `http://localhost:8000/v1`). Leave it running and sanity-check it with `client.py` below.
 
-> `service_naive.yaml` deploys the same app as an Anyscale **Service** (the production target):
-> `anyscale service deploy -f service_naive.yaml`. We run it in a workspace here so Part 2 can reach
-> the endpoint over `localhost`.
+> To connect coding agents, deploy the same app as an Anyscale **Service** (the production target):
+> `anyscale service deploy -f service_naive.yaml`, then follow Part 2 to point Claude Code, Codex, and
+> Cursor at the service's public URL + token.
 
 ## Verify
 
@@ -61,7 +60,7 @@ no proxy needed:
 | `POST /v1/messages` | Claude Code (Anthropic) |
 | `POST /v1/responses` | Codex (OpenAI Responses) |
 
-Connect your agents in **[Part 2](../part2-connect-clients-workspace/)** — point Claude Code, Codex, and
+Connect your agents in **[Part 2](../part2-connect-clients-production/)** — point Claude Code, Codex, and
 Cursor **directly** at the paths above, **no proxy, no `pip install`**. (A LiteLLM-gateway alternative
 also exists — handy for a service *without* direct streaming — but this repo uses the direct path.)
 
@@ -111,4 +110,4 @@ also exists — handy for a service *without* direct streaming — but this repo
 > capacity should be measured with real workloads.
 
 
-→ Next: **[Part 2 — connect Claude Code / Codex / Cursor](../part2-connect-clients-workspace/README.md)** (no proxy).
+→ Next: **[Part 2 — connect Claude Code / Codex / Cursor](../part2-connect-clients-production/README.md)** (no proxy).
