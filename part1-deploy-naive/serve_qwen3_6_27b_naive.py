@@ -71,7 +71,11 @@ llm_config = LLMConfig(
         reasoning_parser="qwen3",
         tool_call_parser="qwen3_coder",
         enable_auto_tool_choice=True,
-        limit_mm_per_prompt={"image": 0, "video": 0},
+        # Image input ENABLED by default (Qwen3.6-27B is a VLM). Set image:0 for a text-only endpoint.
+        # NOTE: verified on the Part 3 single-GPU 96GB shape; this 4x L4 (24GB) baseline is tighter and
+        # was not separately load-tested — if you hit OOM at startup, lower max_pixels (mm_processor_kwargs)
+        # or reduce max_model_len.
+        limit_mm_per_prompt={"image": 4, "video": 0},
     ),
 )
 
