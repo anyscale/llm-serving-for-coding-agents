@@ -10,6 +10,20 @@ your open model with Anthropic's Claude models:
 - Lets users **switch models on the fly** from inside Claude Code (`/model`), including a
   `smart-router` that picks local vs Opus per request by prompt complexity.
 
+> **This part is a template.** One local model + Claude Opus + a router is the minimal working
+> shape — edit `gateway/config.yaml` (see its "TO SWAP THE BACKEND MODEL" header) to build your own
+> mix:
+>
+> - **Other Anthropic models:** copy the `claude-opus-4-8` entry and change the model, e.g. Fable 5
+>   (`anthropic/claude-fable-5`). Leave `api_key` unset so the per-user OAuth passthrough keeps
+>   working, then reference the new name wherever it should participate (`tiers`,
+>   `router_settings.fallbacks`, or just `/model`).
+> - **Multiple self-hosted models:** Ray Serve LLM can serve several models from one Anyscale
+>   service (one `LLMConfig` per model — `/v1/models` lists them all), or you can run separate
+>   services. Add one `model_list` entry per served model, then route between them with the
+>   smart-router `tiers` and `keyword_tier_rules` — e.g. SIMPLE → a small local model,
+>   MEDIUM/COMPLEX → `qwen3.6-27b`, REASONING → a Claude model.
+
 ![LiteLLM router gateway architecture: Claude Code → gateway → Anyscale Qwen service, with Claude Opus fallback and the smart-router decision flow](./architecture_diagram.drawio.png)
 
 The editable source is [`architecture_diagram.drawio`](./architecture_diagram.drawio); the right
