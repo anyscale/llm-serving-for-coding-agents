@@ -1,0 +1,21 @@
+# Containerfile — production image for the optimized Qwen3.6-27B-FP8 service (H100 / Azure AKS).
+#
+# Adapted from part3-optimize/Containerfile: the runai-model-streamer packages are dropped
+# because the fast-loading path streams from AWS S3, which this Azure cluster cannot reach.
+# Re-add `runai-model-streamer` (+ an Azure-reachable weights mirror) if you opt back in.
+#
+# PIN the base for production. For a fully immutable build, replace the tag with its digest:
+#   FROM anyscale/ray-llm@sha256:<digest>
+FROM anyscale/ray-llm:2.56.0-py312-cu130
+
+# vLLM 0.23.0 supports Claude Code's current /v1/messages schema; the base image ships 0.22.0.
+RUN pip install --no-cache-dir "vllm==0.23.0" "scipy>=1.13"
+
+# PATCH: vLLM 0.23.0 (and 0.25.1) forwards Anthropic "tool_reference" content items (sent by
+# Claude Code's deferred MCP tool loading) RAW into the chat template; the Qwen3.6 template
+# only accepts text/image/video items and 500s with "Unexpected item type in content."
+# This rewrites them to plain-text markers in the tool result (the full tool definitions
+# arrive via the request's tools array anyway). Base64-embedded because Anyscale image
+# builds have no COPY context. The build FAILS if the patch anchor is missing (version drift).
+RUN echo "IiIiUGF0Y2ggdkxMTSAwLjIzLjAgYW50aHJvcGljIHNlcnZpbmc6IHJlbmRlciB0b29sX3JlZmVyZW5jZSBpdGVtcyBhcyB0ZXh0LgoKVGhlIEFudGhyb3BpYyAvdjEvbWVzc2FnZXMgdHJhbnNsYXRpb24gZm9yd2FyZHMgcmF3IHsidHlwZSI6ICJ0b29sX3JlZmVyZW5jZSJ9IGRpY3RzCmludG8gdGhlIGNoYXQgdGVtcGxhdGU7IHRoZSBRd2VuMy42IHRlbXBsYXRlIG9ubHkgYWNjZXB0cyB0ZXh0L2ltYWdlL3ZpZGVvIGl0ZW1zIGFuZApyYWlzZXMgIlVuZXhwZWN0ZWQgaXRlbSB0eXBlIGluIGNvbnRlbnQuIiAoYnJlYWtzIENsYXVkZSBDb2RlIGRlZmVycmVkIE1DUCBsb2FkaW5nKS4KIiIiCmltcG9ydCBnbG9iCmltcG9ydCBzeXMKCnBhdGhzID0gZ2xvYi5nbG9iKCIvaG9tZS9yYXkvYW5hY29uZGEzL2xpYi9weXRob24zKi9zaXRlLXBhY2thZ2VzL3ZsbG0vZW50cnlwb2ludHMvYW50aHJvcGljL3NlcnZpbmcucHkiKSBvciBcCiAgICAgICAgZ2xvYi5nbG9iKCIvdXNyL2xvY2FsL2xpYi9weXRob24zKi9zaXRlLXBhY2thZ2VzL3ZsbG0vZW50cnlwb2ludHMvYW50aHJvcGljL3NlcnZpbmcucHkiKQphc3NlcnQgcGF0aHMsICJ2bGxtIGFudGhyb3BpYyBzZXJ2aW5nLnB5IG5vdCBmb3VuZCIKcCA9IHBhdGhzWzBdCnNyYyA9IG9wZW4ocCkucmVhZCgpCm9sZCA9ICcnJyAgICAgICAgICAgICAgICBlbGlmIGl0ZW1fdHlwZSA9PSAidG9vbF9yZWZlcmVuY2UiOgogICAgICAgICAgICAgICAgICAgIHJlZl9uYW1lID0gaXRlbS5nZXQoInRvb2xfbmFtZSIpIG9yIGl0ZW0uZ2V0KCJuYW1lIikKICAgICAgICAgICAgICAgICAgICBpZiByZWZfbmFtZToKICAgICAgICAgICAgICAgICAgICAgICAgdG9vbF9yZWZlcmVuY2UuYXBwZW5kKAogICAgICAgICAgICAgICAgICAgICAgICAgICAgeyJ0eXBlIjogInRvb2xfcmVmZXJlbmNlIiwgIm5hbWUiOiByZWZfbmFtZX0KICAgICAgICAgICAgICAgICAgICAgICAgKScnJwpuZXcgPSAnJycgICAgICAgICAgICAgICAgZWxpZiBpdGVtX3R5cGUgPT0gInRvb2xfcmVmZXJlbmNlIjoKICAgICAgICAgICAgICAgICAgICByZWZfbmFtZSA9IGl0ZW0uZ2V0KCJ0b29sX25hbWUiKSBvciBpdGVtLmdldCgibmFtZSIpCiAgICAgICAgICAgICAgICAgICAgaWYgcmVmX25hbWU6CiAgICAgICAgICAgICAgICAgICAgICAgIHRleHRfcGFydHMuYXBwZW5kKCJbdG9vbF9yZWZlcmVuY2VdICIgKyByZWZfbmFtZSknJycKYXNzZXJ0IG9sZCBpbiBzcmMsICJ0b29sX3JlZmVyZW5jZSBwYXRjaCBhbmNob3Igbm90IGZvdW5kIC0gdkxMTSB2ZXJzaW9uIGRyaWZ0PyIKb3BlbihwLCAidyIpLndyaXRlKHNyYy5yZXBsYWNlKG9sZCwgbmV3KSkKcHJpbnQoInBhdGNoZWQ6IiwgcCkK" | base64 -d | python3
+

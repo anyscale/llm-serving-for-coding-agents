@@ -1,0 +1,7 @@
+name: qwen3-6-27b-fp8-h100-always-on
+containerfile: Containerfile
+env_vars:
+  RAY_SERVE_ENABLE_HA_PROXY: "1"
+  RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+applications:
+  - import_path: serve_qwen3_6_27b_optimized:app
