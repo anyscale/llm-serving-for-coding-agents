@@ -1,0 +1,128 @@
+# =============================================================================
+# LiteLLM Gateway / Router config
+# =============================================================================
+# Claude Code -> ANTHROPIC_BASE_URL (this gateway, /v1/messages)
+#             -> LiteLLM router
+#                -> PRIMARY : your Anyscale LLM service (OpenAI-compatible)
+#                -> FALLBACK: Anthropic Claude, via each user's OWN Claude
+#                             Max/Pro OAuth token (forwarded; no org API key).
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# TO SWAP THE BACKEND MODEL (e.g. Qwen -> some other model):
+#   1. In service.yaml `env_vars`, update the 3 backend vars:
+#        LOCAL_LLM_MODEL        (e.g. anthropic/<served-id> for a native
+#                                Anthropic /v1/messages endpoint, or openai/<id>
+#                                if the new backend only speaks OpenAI — see the
+#                                PRIMARY block below and adjust api_base/auth)
+#        LOCAL_LLM_BASE_URL     (service ROOT, no /v1 — LiteLLM appends it)
+#        LOCAL_LLM_AUTH_HEADER  ("Bearer <token>")
+#   2. Change the ONE anchor value below — `&primary <name>` — to the display
+#      name you want users to type in `/model`. It propagates everywhere
+#      (tiers, fallbacks, router default) through the *primary alias.
+#   3. (optional) tweak the `keyword_tier_rules` phrases if they mention "qwen".
+# Nothing else needs editing. See ../ROUTING.md for how routing decisions
+# are made.
+# ─────────────────────────────────────────────────────────────────────────────
+
+model_list:
+  # PRIMARY: your Anyscale LLM service via its NATIVE Anthropic /v1/messages
+  # endpoint (direct streaming) — NOT the OpenAI-translated path. This preserves
+  # Qwen's own *signed* thinking blocks so extended thinking round-trips cleanly
+  # (the OpenAI path re-synthesized unsigned thinking blocks that failed
+  # validation). LiteLLM's anthropic provider appends `/v1/messages` to
+  # api_base, so LOCAL_LLM_BASE_URL is the service ROOT (no `/v1`), and
+  # LOCAL_LLM_MODEL is `anthropic/<served-model>` (e.g. anthropic/qwen3.6-27b).
+  - model_name: &primary anyscale-qwen3.6-27b
+    litellm_params:
+      model: os.environ/LOCAL_LLM_MODEL            # anthropic/qwen3.6-27b
+      api_base: os.environ/LOCAL_LLM_BASE_URL      # https://<svc>  (ROOT, no /v1)
+      # LiteLLM's anthropic provider defaults to the `x-api-key` header, but the
+      # Anyscale service wants `Authorization: Bearer <token>`. api_key must be
+      # set (provider requires it) but is unused; real auth is the header below.
+      api_key: "unused-auth-is-in-extra-headers"
+      extra_headers:
+        Authorization: os.environ/LOCAL_LLM_AUTH_HEADER   # "Bearer <service token>"
+      timeout: 600
+      stream_timeout: 600   # deliberately < client API_TIMEOUT_MS (1200s): if the upstream stalls
+                            # for 10min the gateway cuts it server-side first, rather than the client
+                            # hanging the full 20min. (Was 90s, which cut legitimately-long agent turns.)
+
+  # FALLBACK / explicit-select: Anthropic Claude via the USER's subscription.
+  # No api_key on purpose — forward_client_headers_to_llm_api (below) forwards
+  # the caller's Claude OAuth bearer + anthropic-beta header. Billed to the user.
+  - model_name: &fallback claude-opus-4-8
+    litellm_params:
+      model: anthropic/claude-opus-4-8
+      timeout: 600
+      stream_timeout: 600   # deliberately < client API_TIMEOUT_MS (1200s): if the upstream stalls
+                            # for 10min the gateway cuts it server-side first, rather than the client
+                            # hanging the full 20min. (Was 90s, which cut legitimately-long agent turns.)
+
+  # SMART ROUTER: auto complexity routing (local rule-based scoring, no embeddings).
+  # Scoring tiers map to models via `tiers`; `keyword_tier_rules` are deterministic
+  # overrides checked BEFORE scoring (so users can force a backend in-prompt).
+  # Full decision logic: see ../ROUTING.md.
+  - model_name: smart-router
+    litellm_params:
+      model: auto_router/complexity_router
+      drop_params: true
+      complexity_router_config:
+        # NOTE: these 4 tier names are fixed labels for complexity buckets (low
+        # -> high). "REASONING" is just the TOP bucket — it does NOT mean "route
+        # to a reasoning model"; each tier maps to whatever model you put here.
+        tiers:
+          SIMPLE: *primary
+          MEDIUM: *primary
+          COMPLEX: *primary
+          REASONING: *fallback
+        # In-prompt overrides. Say "use opus"/"opus 4.8" to force Claude Opus,
+        # or "use qwen"/"use local" to force the local model. Most-severe tier
+        # wins on multi-match; matching is literal & case-insensitive on the LAST
+        # user message (no negation awareness — see ../ROUTING.md caveats).
+        #
+        # Skill triggers: the /fix skill (workload debugging) forces Opus, the
+        # /ask skill (Ray/Anyscale Q&A) stays local. The spellings matter — a
+        # bare "/fix" keyword would NEVER match: space-less keywords use
+        # \b-word-boundary regex (LiteLLM 1.93.0 complexity_router
+        # _keyword_matches), and \b fails between start-of-message/space and
+        # "/". So "/fix " (trailing space -> substring match) catches it typed
+        # in a prompt, and "command-name>/fix" catches the
+        # <command-name>/fix</command-name> block Claude Code sends when the
+        # skill is invoked.
+        keyword_tier_rules:
+          - keywords: ["use opus", "opus 4.8", "opus4.8", "use claude", "use reasoning",
+                       "/fix ", "command-name>/fix"]
+            tier: REASONING       # -> *fallback (claude-opus-4-8)
+          - keywords: ["use qwen", "use local", "use the local model", "use anyscale",
+                       "use anyscale llm", "use the anyscale model", "use oss",
+                       "use the oss model", "use open model", "use the open model",
+                       "open source model", "oss model", "open model",
+                       "/ask ", "command-name>/ask"]
+            tier: SIMPLE          # -> *primary
+      complexity_router_default_model: *primary
+
+# Router: retry primary once, then fall back to the user's Claude subscription.
+router_settings:
+  num_retries: 1
+  cooldown_time: 60
+  fallbacks:
+    - *primary: [*fallback]
+    - smart-router: [*fallback]
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY
+  # Forward Authorization + anthropic-beta upstream — REQUIRED for per-user
+  # Claude OAuth passthrough on fallback.
+  forward_client_headers_to_llm_api: true
+  # OPTIONAL: per-user virtual keys / usage tracking (needs Postgres).
+  # database_url: os.environ/DATABASE_URL
+
+litellm_settings:
+  drop_params: true              # tolerate Anthropic vs OpenAI param differences
+  redact_user_api_key_info: true # never log auth headers (they carry OAuth tokens)
+  # Strip the FORWARDED client Authorization (Claude OAuth) when the selected
+  # deployment is the local Anyscale service, so the PRIMARY block's
+  # extra_headers bearer is the only auth its ingress sees. Without this the
+  # OAuth header rides along, the ingress 401s, and every Claude Code request
+  # silently falls back to Opus. See custom_callbacks.py for the full story.
+  callbacks: custom_callbacks.scrub_client_auth
