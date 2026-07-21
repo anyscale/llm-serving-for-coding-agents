@@ -1,0 +1,110 @@
+<mxfile host="Electron" agent="claude">
+  <diagram id="litellm-router-gateway" name="LiteLLM Router Gateway">
+    <mxGraphModel dx="1164" dy="701" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="760" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="title" parent="1" style="text;html=1;fontSize=18;align=left;verticalAlign=middle;" value="&lt;b&gt;LiteLLM Router Gateway for Claude Code&lt;/b&gt;" vertex="1">
+          <mxGeometry height="34" width="700" x="40" y="8" as="geometry" />
+        </mxCell>
+        <mxCell id="laneA" parent="1" style="fillColor=none;strokeColor=#b3cde8;strokeWidth=1.5;html=1;" value="" vertex="1">
+          <mxGeometry height="150" width="860" x="40" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="laneA_label" parent="1" style="fillColor=#1071e5;strokeColor=#1071e5;fontColor=#ffffff;fontSize=12;fontStyle=1;horizontal=0;html=1;whiteSpace=wrap;" value="Developer machine" vertex="1">
+          <mxGeometry height="150" width="30" x="40" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="laneB" parent="1" style="fillColor=none;strokeColor=#b3cde8;strokeWidth=1.5;html=1;" value="" vertex="1">
+          <mxGeometry height="340" width="860" x="40" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="laneB_label" parent="1" style="fillColor=#1071e5;strokeColor=#1071e5;fontColor=#ffffff;fontSize=12;fontStyle=1;horizontal=0;html=1;whiteSpace=wrap;" value="Anyscale Cloud" vertex="1">
+          <mxGeometry height="340" width="30" x="40" y="200" as="geometry" />
+        </mxCell>
+        <mxCell id="laneC" parent="1" style="fillColor=none;strokeColor=#b3cde8;strokeWidth=1.5;html=1;" value="" vertex="1">
+          <mxGeometry height="150" width="860" x="40" y="540" as="geometry" />
+        </mxCell>
+        <mxCell id="laneC_label" parent="1" style="fillColor=#1071e5;strokeColor=#1071e5;fontColor=#ffffff;fontSize=12;fontStyle=1;horizontal=0;html=1;whiteSpace=wrap;" value="Anthropic" vertex="1">
+          <mxGeometry height="150" width="30" x="40" y="540" as="geometry" />
+        </mxCell>
+        <mxCell id="cc" parent="1" style="rounded=1;arcSize=10;fillColor=#d5e8d4;strokeColor=#82b366;html=1;whiteSpace=wrap;fontSize=12;" value="&lt;b&gt;Claude Code&lt;/b&gt;&lt;br&gt;signed in with your Claude subscription&lt;br&gt;&lt;i&gt;default model: smart-router&lt;/i&gt;" vertex="1">
+          <mxGeometry height="90" width="400" x="160" y="80" as="geometry" />
+        </mxCell>
+        <mxCell id="gw" parent="1" style="rounded=1;arcSize=10;fillColor=#edf5ff;strokeColor=#6c8ebf;html=1;whiteSpace=wrap;fontSize=12;" value="&lt;b&gt;LiteLLM Router Gateway&lt;/b&gt;&lt;br&gt;Anyscale Service (CPU) · smart-router + fallback" vertex="1">
+          <mxGeometry height="90" width="400" x="160" y="240" as="geometry" />
+        </mxCell>
+        <mxCell id="qwen" parent="1" style="rounded=1;arcSize=10;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;whiteSpace=wrap;fontSize=12;" value="&lt;b&gt;Anyscale LLM Service&lt;/b&gt; (GPU)&lt;br&gt;Qwen3.6-27B" vertex="1">
+          <mxGeometry height="80" width="400" x="160" y="420" as="geometry" />
+        </mxCell>
+        <mxCell id="anthropic" parent="1" style="rounded=1;arcSize=10;fillColor=#fff2cc;strokeColor=#d6b656;html=1;whiteSpace=wrap;fontSize=12;" value="&lt;b&gt;Claude Opus 4.8&lt;/b&gt; — Anthropic API&lt;br&gt;billed to your Claude subscription" vertex="1">
+          <mxGeometry height="80" width="400" x="160" y="580" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" edge="1" parent="1" source="cc" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=classic;strokeColor=#333333;strokeWidth=3;html=1;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="gw" value="&lt;b&gt;① request&lt;/b&gt;">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e2" edge="1" parent="1" source="gw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=classic;strokeColor=#333333;strokeWidth=3;html=1;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="qwen" value="&lt;b&gt;② most requests&lt;/b&gt;&lt;br&gt;(SIMPLE · MEDIUM · COMPLEX)">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="e3" edge="1" parent="1" source="gw" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=classic;strokeColor=#333333;strokeWidth=3;html=1;fontSize=11;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=1;entryY=0.5;" target="anthropic" value="&lt;b&gt;③ hardest requests&lt;/b&gt;&lt;br&gt;(REASONING) or &#39;/model opus&#39;">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="700" y="285" />
+              <mxPoint x="700" y="620" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="e4" edge="1" parent="1" source="qwen" style="edgeStyle=orthogonalEdgeStyle;rounded=0;endArrow=classic;strokeColor=#b85450;strokeWidth=3;dashed=1;dashPattern=8 4;html=1;fontSize=11;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="anthropic" value="&lt;b&gt;④ error / timeout → fallback&lt;/b&gt;">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="135" y="20" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="legend" parent="1" style="text;html=1;fontSize=11;align=left;verticalAlign=middle;" value="&lt;font color=&quot;#333333&quot;&gt;&lt;b&gt;━━&lt;/b&gt;&lt;/font&gt; request path&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&lt;font color=&quot;#b85450&quot;&gt;&lt;b&gt;┅┅&lt;/b&gt;&lt;/font&gt; fallback on failure&amp;nbsp;&amp;nbsp;&amp;nbsp;&amp;nbsp;&lt;font color=&quot;#d6b656&quot;&gt;&lt;b&gt;■&lt;/b&gt;&lt;/font&gt; billed to your Claude subscription" vertex="1">
+          <mxGeometry height="30" width="700" x="160" y="700" as="geometry" />
+        </mxCell>
+        <mxCell id="panel" parent="1" style="rounded=1;arcSize=4;dashed=1;dashPattern=8 8;fillColor=#ffffff;strokeColor=#666666;html=1;verticalAlign=top;fontSize=13;fontStyle=1;whiteSpace=wrap;spacingTop=6;" value="smart-router — routing decision (rule-based, &amp;lt;1 ms)" vertex="1">
+          <mxGeometry height="640" width="520" x="940" y="50" as="geometry" />
+        </mxCell>
+        <mxCell id="p_start" parent="1" style="rounded=1;arcSize=20;fillColor=#e3fae3;strokeColor=#54c45e;html=1;whiteSpace=wrap;fontSize=11;" value="request to &lt;b&gt;smart-router&lt;/b&gt;" vertex="1">
+          <mxGeometry height="40" width="240" x="1080" y="95" as="geometry" />
+        </mxCell>
+        <mxCell id="p_d1" parent="1" style="rhombus;fillColor=#dae8fc;strokeColor=#6c8ebf;html=1;whiteSpace=wrap;fontSize=10;" value="&lt;b&gt;hints in the prompt?&lt;/b&gt;&lt;br&gt;&#39;use opus&#39; or `/fix` skill → Opus&amp;nbsp;&amp;nbsp;&lt;div&gt;&#39;use qwen&#39; or `/ask` skill → Qwen&lt;br&gt;reasoning words (&#39;step by step&#39;, &#39;analyze&#39; …) → Opus&lt;/div&gt;" vertex="1">
+          <mxGeometry height="120" width="400" x="1000" y="170" as="geometry" />
+        </mxCell>
+        <mxCell id="p_score" parent="1" style="rounded=1;arcSize=10;fillColor=#e3fae3;strokeColor=#54c45e;html=1;whiteSpace=wrap;fontSize=10;" value="&lt;b&gt;complexity score (0 – 1)&lt;/b&gt;&amp;nbsp;&lt;div&gt;a weighted mix of&lt;br&gt;code,&amp;nbsp; reasoning words,&amp;nbsp; technical terms,&amp;nbsp;&lt;br&gt;prompt length etc.&lt;/div&gt;" vertex="1">
+          <mxGeometry height="90" width="370" x="1015" y="350" as="geometry" />
+        </mxCell>
+        <mxCell id="tiers" parent="1" style="rounded=1;arcSize=6;fillColor=none;strokeColor=#666666;html=1;verticalAlign=top;fontSize=11;fontStyle=1;whiteSpace=wrap;spacingTop=2;" value="tier → model map" vertex="1">
+          <mxGeometry height="110" width="400" x="1000" y="495" as="geometry" />
+        </mxCell>
+        <mxCell id="t_local" parent="1" style="rounded=0;fillColor=#e3fae3;strokeColor=#54c45e;html=1;whiteSpace=wrap;fontSize=11;align=left;spacing=8;" value="SIMPLE · MEDIUM · COMPLEX (score ≤ 0.60)&amp;nbsp;&amp;nbsp;→&amp;nbsp;&amp;nbsp;&lt;b&gt;Qwen (Anyscale)&lt;/b&gt;" vertex="1">
+          <mxGeometry height="32" width="360" x="1020" y="523" as="geometry" />
+        </mxCell>
+        <mxCell id="t_opus" parent="1" style="rounded=0;fillColor=#fff2cc;strokeColor=#d6b656;html=1;whiteSpace=wrap;fontSize=11;align=left;spacing=8;" value="REASONING (score &amp;gt; 0.60, or forced)&amp;nbsp;&amp;nbsp;→&amp;nbsp;&amp;nbsp;&lt;b&gt;Claude Opus&lt;/b&gt;" vertex="1">
+          <mxGeometry height="32" width="360" x="1020" y="563" as="geometry" />
+        </mxCell>
+        <mxCell id="p_fb" parent="1" style="rounded=1;arcSize=10;fillColor=#ffffff;strokeColor=#b85450;dashed=1;dashPattern=8 4;html=1;whiteSpace=wrap;fontSize=11;" value="error or timeout? retry once, then fall back to &lt;b&gt;Claude Opus&lt;/b&gt;" vertex="1">
+          <mxGeometry height="36" width="400" x="1000" y="640" as="geometry" />
+        </mxCell>
+        <mxCell id="pe1" edge="1" parent="1" source="p_start" style="edgeStyle=orthogonalEdgeStyle;endArrow=classic;strokeColor=#666666;strokeWidth=1.5;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="p_d1" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="pe2" edge="1" parent="1" source="p_d1" style="edgeStyle=orthogonalEdgeStyle;endArrow=classic;strokeColor=#666666;strokeWidth=1.5;html=1;fontSize=10;labelBackgroundColor=#ffffff;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="p_score" value="no — score it">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="pe4" edge="1" parent="1" source="p_score" style="edgeStyle=orthogonalEdgeStyle;endArrow=classic;strokeColor=#666666;strokeWidth=1.5;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="tiers" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="pe5" edge="1" parent="1" source="p_d1" style="edgeStyle=orthogonalEdgeStyle;endArrow=classic;strokeColor=#666666;strokeWidth=1.5;html=1;fontSize=10;labelBackgroundColor=#ffffff;exitX=1;exitY=0.5;entryX=1;entryY=0.1;" target="tiers" value="yes — forced">
+          <mxGeometry relative="1" x="-0.6" as="geometry">
+            <mxPoint y="-14" as="offset" />
+            <Array as="points">
+              <mxPoint x="1430" y="230" />
+              <mxPoint x="1430" y="506" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="pe7" edge="1" parent="1" source="tiers" style="edgeStyle=orthogonalEdgeStyle;endArrow=classic;strokeColor=#666666;strokeWidth=1.5;html=1;exitX=0.5;exitY=1;entryX=0.5;entryY=0;" target="p_fb" value="">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

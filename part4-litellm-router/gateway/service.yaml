@@ -1,0 +1,63 @@
+# service.yaml — LiteLLM router gateway as an Anyscale Service (CPU-only)
+# -----------------------------------------------------------------------------
+# Deploy FROM THIS DIRECTORY (the gateway/ folder):
+#   cd part4-litellm-router/gateway && anyscale service deploy -f service.yaml
+#
+# NOTE: `working_dir` and `requirements` are resolved relative to your CURRENT
+# working directory (not to this file's location), so run the command from this
+# directory. A wrong CWD gives "Requirements file requirements.txt does not
+# exist." `working_dir: .` also means ONLY this gateway/ folder is uploaded.
+#
+# Secrets/endpoints are passed as env_vars below. Fill in the placeholders, or
+# better, keep this file placeholder-only and inject real values at deploy time:
+#   anyscale service deploy -f service.yaml \
+#     --env LOCAL_LLM_AUTH_HEADER="Bearer <token>" \
+#     --env LITELLM_MASTER_KEY="sk-<random>"
+# The gateway itself needs NO GPU — the model runs on the separate Part 1/3
+# Anyscale LLM service.
+# -----------------------------------------------------------------------------
+name: litellm-router-gateway
+
+# CPU Ray image; LiteLLM is installed from requirements.txt. For production,
+# prefer baking deps into a custom image via the provided Containerfile (see
+# README) to avoid the several-minute pip install on every deploy.
+image_uri: anyscale/ray:2.55.1-py311
+requirements: requirements.txt
+
+working_dir: .
+
+compute_config:
+  # Gateway is lightweight and CPU-only; a single small worker type is plenty.
+  # Ray Serve autoscaling (in serve_litellm.py) handles replica scaling.
+  auto_select_worker_config: true
+
+# IMPORTANT: Anyscale ingress auth is DISABLED on purpose. The Claude Code
+# OAuth-passthrough design needs the `Authorization` header free to carry each
+# user's Claude OAuth token (which the gateway forwards to Anthropic on
+# fallback). If Anyscale ingress auth were ON, it would consume/validate that
+# same header and break passthrough. The gateway is instead protected by
+# LiteLLM's own auth: callers must present LITELLM_MASTER_KEY (or a per-user
+# virtual key) via the `x-litellm-api-key` header.
+query_auth_token_enabled: false
+
+env_vars:
+  # ---- PRIMARY: your Anyscale LLM service from Part 1 / Part 3 --------------
+  # Native Anthropic passthrough: model is `anthropic/<served-id>`, base URL is
+  # the service ROOT (no /v1 — LiteLLM appends /v1/messages), and the service
+  # bearer token is passed as the Authorization header (LOCAL_LLM_AUTH_HEADER).
+  # Requires direct streaming on the LLM service (Part 1 enables it), so the
+  # service exposes the native Anthropic /v1/messages endpoint.
+  LOCAL_LLM_MODEL: "anthropic/qwen3.6-27b"
+  LOCAL_LLM_BASE_URL: "https://YOUR-QWEN-SERVICE-HOST.s.anyscaleuserdata.com"
+  LOCAL_LLM_AUTH_HEADER: "Bearer paste-your-anyscale-service-bearer-token"
+
+  # ---- Gateway master key (clients authenticate to the gateway with this) ---
+  # Generate one:  python3 -c 'import secrets; print("sk-" + secrets.token_urlsafe(32))'
+  LITELLM_MASTER_KEY: "sk-paste-a-strong-random-key"
+
+  # ---- OPTIONAL: per-user virtual keys / usage tracking (needs Postgres) ----
+  # DATABASE_URL: "postgresql://user:pass@host:5432/litellm"
+
+applications:
+  - name: litellm_router
+    import_path: serve_litellm:entrypoint

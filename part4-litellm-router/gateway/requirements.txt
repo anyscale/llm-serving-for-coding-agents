@@ -1,0 +1,12 @@
+# LiteLLM gateway dependencies (CPU-only).
+# 1.93.0 is the latest stable that installs and ships the Auto Router
+# (auto_router/complexity_router). NOTE: 1.94.x does NOT exist on PyPI as a
+# stable release (only rc/dev builds) — do not pin >=1.94.0, it fails to resolve.
+litellm[proxy]==1.93.0
+# Anthropic SDK is used by LiteLLM to talk the Anthropic Messages API to the
+# Claude fallback backend.
+anthropic>=0.40.0
+# LiteLLM's auth-error handler imports `prisma` even with no DB configured; the
+# [proxy] extra does NOT pull it in 1.93.0, so a missing key would 500 instead
+# of 401. Installing prisma makes auth failures return proper 401s.
+prisma>=0.15.0

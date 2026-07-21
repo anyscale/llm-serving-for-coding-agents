@@ -15,6 +15,7 @@ without running a separate proxy.
 | 1 | Deploy `qwen3.6-27b` on Anyscale with Ray Serve LLM. | [`part1-deploy-naive/`](./part1-deploy-naive/) |
 | 2 | Connect Claude Code, Codex, and Cursor to the served model. | [`part2-connect-clients-production/`](./part2-connect-clients-production/) |
 | 3 | Optimize the deployment for a 1x RTX PRO 6000 with 256K FP8 context. | [`part3-optimize/`](./part3-optimize/) |
+| 4 | Combine the self-hosted model with Claude Opus behind one LiteLLM gateway. | [`part4-litellm-router/`](./part4-litellm-router/) |
 
 ## API Endpoints (via Direct Streaming)
 
@@ -100,6 +101,22 @@ Then point your agent at the new service URL (Part 2). See the [`Part 3 README`]
 for toggle defaults and the work-hours caveat, [`BENCHMARKS.md`](./part3-optimize/notes/BENCHMARKS.md) for
 measured numbers, and [`INCOMPATIBILITIES.md`](./part3-optimize/notes/INCOMPATIBILITIES.md) for knobs that
 can't be combined.
+
+### 6. (Optional) Combine with Claude Opus via a LiteLLM gateway
+
+Parts 1–3 send all traffic to the self-hosted model. Part 4 deploys a **LiteLLM gateway** as a second,
+CPU-only Anyscale Service in front of it, so Claude Code defaults to your Anyscale model but
+**automatically falls back to Claude Opus** on errors — billed to each user's own Claude Max/Pro
+subscription via OAuth passthrough — and users can switch models on the fly with `/model` or let a
+complexity-based `smart-router` decide per request:
+
+```bash
+cd ../part4-litellm-router/gateway
+anyscale service deploy -f service.yaml
+```
+
+See the [`Part 4 README`](./part4-litellm-router/README.md) for setup and
+[`ROUTING.md`](./part4-litellm-router/ROUTING.md) for how the smart router decides.
 
 ## Collecting Real Claude Code Session Data for Benchmarking
 

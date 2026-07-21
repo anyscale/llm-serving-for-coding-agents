@@ -1,0 +1,12 @@
+# Containerfile — production image for the LiteLLM router gateway.
+# This bakes only the DEPENDENCIES (the slow part: litellm[proxy] + prisma).
+# The application code (serve_litellm.py, config.yaml) is NOT copied here — it
+# still ships at deploy time via `working_dir: .` in service.yaml, so you can
+# iterate on the app without rebuilding the image. Build & use with:
+#   anyscale service deploy -f service.yaml --containerfile ./Containerfile
+# (and remove `image_uri` + `requirements` from service.yaml when doing so).
+FROM anyscale/ray:2.55.1-py311
+
+# Install the LiteLLM proxy + Anthropic SDK + prisma (dependencies only).
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
