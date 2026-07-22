@@ -103,7 +103,7 @@ for toggle defaults and the work-hours caveat, [`BENCHMARKS.md`](./part3-optimiz
 measured numbers, and [`INCOMPATIBILITIES.md`](./part3-optimize/notes/INCOMPATIBILITIES.md) for knobs that
 can't be combined.
 
-### 6. (Optional) Combine with Claude Opus via a LiteLLM gateway
+### 4. (Optional) Combine with Claude Opus via a LiteLLM gateway
 
 Parts 1–3 send all traffic to the self-hosted model. Part 4 deploys a **LiteLLM gateway** as a second,
 CPU-only Anyscale Service in front of it, so Claude Code defaults to your Anyscale model but
@@ -119,7 +119,7 @@ anyscale service deploy -f service.yaml
 See the [`Part 4 README`](./part4-litellm-router/README.md) for setup and
 [`ROUTING.md`](./part4-litellm-router/ROUTING.md) for how the smart router decides.
 
-### 7. (Optional) Roll out to the whole team via managed settings
+### 5. (Optional) Roll out to the whole team via managed settings
 
 Part 4 still asks every developer to run a launcher script. Part 5 removes that last step: an admin
 pushes two JSON files ([`managed-settings.json`](./part5-enterprise-rollout/managed-settings.json),

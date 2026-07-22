@@ -9,8 +9,9 @@ happen.
 
 Part 5 flips the model: a **Claude Code admin configures the gateway once for
 the entire org, and no developer sets up anything**. The admin pushes two
-small JSON files to each machine (via MDM, config management, or Anthropic's
-admin console) and plain `claude` just works everywhere — the gateway URL,
+small JSON files to each machine (via MDM or config management; Anthropic's
+admin console works for the settings file — see "How to deploy") and plain
+`claude` just works everywhere — the gateway URL,
 model routing, gateway key, and the Brave MCP are all injected by Claude Code
 itself. No env vars, no launcher, no per-developer steps; a new hire's first
 `claude` already routes through the gateway.
@@ -177,7 +178,7 @@ virtual key (requires the gateway's Postgres/virtual-keys feature — see the
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "smart-router",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "smart-router",
     "ANTHROPIC_SMALL_FAST_MODEL": "smart-router",
-    "MAX_THINKING_TOKENS": "0"
+    "API_TIMEOUT_MS": "1200000"
   }
 }
 ```
@@ -214,7 +215,7 @@ below managed in precedence).
     "ANTHROPIC_DEFAULT_SONNET_MODEL": "smart-router",
     "ANTHROPIC_DEFAULT_HAIKU_MODEL": "smart-router",
     "ANTHROPIC_SMALL_FAST_MODEL": "smart-router",
-    "MAX_THINKING_TOKENS": "0"
+    "API_TIMEOUT_MS": "1200000"
   }
 }
 ```
