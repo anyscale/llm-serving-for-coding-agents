@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://YOUR-GATEWAY-HOST.s.anyscaleuserdata.com",
+    "ANTHROPIC_CUSTOM_HEADERS": "x-litellm-api-key: Bearer sk-paste-the-gateway-master-key",
+
+    "ANTHROPIC_MODEL": "smart-router",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "smart-router",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "smart-router",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "smart-router",
+    "ANTHROPIC_SMALL_FAST_MODEL": "smart-router",
+
+    "API_TIMEOUT_MS": "1200000"
+  }
+}
