@@ -1,14 +1,22 @@
 # Part 5 — Zero-touch rollout via Claude Code managed settings
 
-Part 4 connects Claude Code to the LiteLLM gateway with a per-developer
-launcher ([`run-claude-router.sh`](../part4-litellm-router/run-claude-router.sh)
-+ a local `.env`). Part 5 removes that last per-user step: push the config
-**centrally** so plain `claude` "just works" — the gateway URL, model routing,
-gateway key, and the Brave MCP are all injected by Claude Code itself. Users
-don't set any env vars.
+Part 4 gets developers onto the LiteLLM gateway one at a time: each person
+runs the launcher
+([`run-claude-router.sh`](../part4-litellm-router/run-claude-router.sh)) and
+maintains a local `.env`. That's fine for trying things out, but it doesn't
+scale — every laptop is a manual setup that can drift, break, or simply never
+happen.
 
-This replaces the local launcher for a team/org. The launcher remains useful
-for one-off / personal use or quick testing.
+Part 5 flips the model: a **Claude Code admin configures the gateway once for
+the entire org, and no developer sets up anything**. The admin pushes two
+small JSON files to each machine (via MDM, config management, or Anthropic's
+admin console) and plain `claude` just works everywhere — the gateway URL,
+model routing, gateway key, and the Brave MCP are all injected by Claude Code
+itself. No env vars, no launcher, no per-developer steps; a new hire's first
+`claude` already routes through the gateway.
+
+The Part 4 launcher remains useful for one-off / personal use or quick
+testing.
 
 Before deploying, fill in the two placeholders in
 [`managed-settings.json`](./managed-settings.json):
