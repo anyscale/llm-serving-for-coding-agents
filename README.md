@@ -16,6 +16,7 @@ without running a separate proxy.
 | 2 | Connect Claude Code, Codex, and Cursor to the served model. | [`part2-connect-clients-production/`](./part2-connect-clients-production/) |
 | 3 | Optimize the deployment for a 1x RTX PRO 6000 with 256K FP8 context. | [`part3-optimize/`](./part3-optimize/) |
 | 4 | Combine the self-hosted model with Claude Opus behind one LiteLLM gateway. | [`part4-litellm-router/`](./part4-litellm-router/) |
+| 5 | Roll the gateway out to a whole team, zero-touch, via Claude Code managed settings. | [`part5-enterprise-rollout/`](./part5-enterprise-rollout/) |
 
 ## API Endpoints (via Direct Streaming)
 
@@ -102,7 +103,7 @@ for toggle defaults and the work-hours caveat, [`BENCHMARKS.md`](./part3-optimiz
 measured numbers, and [`INCOMPATIBILITIES.md`](./part3-optimize/notes/INCOMPATIBILITIES.md) for knobs that
 can't be combined.
 
-### 6. (Optional) Combine with Claude Opus via a LiteLLM gateway
+### 4. (Optional) Combine with Claude Opus via a LiteLLM gateway
 
 Parts 1–3 send all traffic to the self-hosted model. Part 4 deploys a **LiteLLM gateway** as a second,
 CPU-only Anyscale Service in front of it, so Claude Code defaults to your Anyscale model but
@@ -117,6 +118,18 @@ anyscale service deploy -f service.yaml
 
 See the [`Part 4 README`](./part4-litellm-router/README.md) for setup and
 [`ROUTING.md`](./part4-litellm-router/ROUTING.md) for how the smart router decides.
+
+### 5. (Optional) Roll out to the whole team via managed settings
+
+Part 4 still asks every developer to run a launcher script. Part 5 removes that last step: an admin
+pushes two JSON files ([`managed-settings.json`](./part5-enterprise-rollout/managed-settings.json),
+[`managed-mcp.json`](./part5-enterprise-rollout/managed-mcp.json)) to each machine via MDM /
+config management, and plain `claude` routes through the gateway with **zero per-user setup** —
+while each user's Claude subscription login stays intact for the Opus fallback. The guide also
+includes a **no-admin validation path** (curl, project-scope settings, and a rootful Linux
+container) so you can prove the whole mechanism before involving IT.
+
+See the [`Part 5 README`](./part5-enterprise-rollout/README.md).
 
 ## Collecting Real Claude Code Session Data for Benchmarking
 
