@@ -129,7 +129,7 @@ while each user's Claude subscription login stays intact for the Opus fallback. 
 includes a **no-admin validation path** (curl, project-scope settings, and a rootful Linux
 container) so you can prove the whole mechanism before involving IT.
 
-See [`part5-enterprise-rollout/ENTERPRISE.md`](./part5-enterprise-rollout/ENTERPRISE.md).
+See the [`Part 5 README`](./part5-enterprise-rollout/README.md).
 
 ## Collecting Real Claude Code Session Data for Benchmarking
 
