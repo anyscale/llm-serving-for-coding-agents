@@ -21,13 +21,20 @@ At that planning capacity, self-hosting costs roughly **$58/dev-month** always-o
 for **2+ GPUs during busy periods**, with autoscaling adding replicas during bursts and scaling back
 down when demand falls.
 
-Commercial pricing comes in two scenarios, and the comparison should be made against both:
+Commercial pricing comes in two scenarios, and the comparison should be made against both. Both
+describe the **same active engineer** under two different billing models. The gap is the billing
+structure, not team size or different token usage:
 
-1. **Scenario 1 - Subscription seats, ~$200/dev-month.** A Claude Max 20x or Cursor Ultra seat
-   caps an individual heavy user at about $200/month, with usage limits attached.
-2. **Scenario 2 - Token-metered billing, ~$800/dev-month.** When usage bills per token, either via
-   API keys or enterprise tiers past the seat cliff, real coding-agent bills land near
-   $800/dev-month for active engineers. Pylon measured about $780.
+1. **Scenario 1 - Subscription seats, ~$200/dev-month.** A Claude Max 20x or Cursor Ultra seat is a
+   flat monthly price with usage limits attached, so it *caps* a heavy user at about $200/month.
+   Past the limit they are throttled, not billed more, so $200 is a ceiling, not a meter reading.
+2. **Scenario 2 - Token-metered billing, ~$800/dev-month.** Billing per token, via API keys or the
+   enterprise tier a team moves to once demand outgrows the seat caps (the "seat cliff"), removes
+   that ceiling. The same engineer's real consumption is then billed in full, about $800/dev-month.
+   Pylon measured about $780.
+
+The ~4x gap is not the same usage priced differently. Seats *suppress* usage by capping and
+throttling it; token billing *reveals* the true cost of that heavy engineer once the cap is gone.
 
 | Self-hosted mode | GPU cost | Planning cost at 50 devs/GPU | Savings vs $200 seats | Savings vs $800 token bill |
 |---|---:|---:|---:|---:|
