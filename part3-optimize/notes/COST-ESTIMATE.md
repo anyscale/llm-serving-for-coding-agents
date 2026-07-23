@@ -21,13 +21,22 @@ At that planning capacity, self-hosting costs roughly **$58/dev-month** always-o
 for **2+ GPUs during busy periods**, with autoscaling adding replicas during bursts and scaling back
 down when demand falls.
 
-Commercial pricing comes in two scenarios, and the comparison should be made against both:
+Commercial pricing comes in two scenarios, and the comparison should be made against both. They are
+largely the **same usage billed two ways**; what flips an org from the first to the second is the
+vendor's seat cliff, not a jump in how much developers actually use the tool:
 
-1. **Scenario 1 - Subscription seats, ~$200/dev-month.** A Claude Max 20x or Cursor Ultra seat
-   caps an individual heavy user at about $200/month, with usage limits attached.
-2. **Scenario 2 - Token-metered billing, ~$800/dev-month.** When usage bills per token, either via
-   API keys or enterprise tiers past the seat cliff, real coding-agent bills land near
-   $800/dev-month for active engineers. Pylon measured about $780.
+1. **Scenario 1 - Subscription seats, ~$200/dev-month (under ~150 seats).** A Claude Max 20x or
+   Cursor Ultra seat is a flat monthly price that *includes* usage, so it caps a heavy user at about
+   $200/month. Past the seat's limit they are throttled, not billed more.
+2. **Scenario 2 - Token-metered billing, ~$800/dev-month (past the ~150-seat cliff).** Per the
+   [Pylon seat-cliff post](https://x.com/marty_kausas/status/2064739372625232068), crossing about
+   **150 Anthropic seats** forces the Enterprise tier: seats stop including usage and every token
+   bills at standard API rates. Usage did not change, but the same active engineer's real
+   consumption now bills in full, about $800/dev-month. Pylon's bill jumped ~3.5x overnight; they
+   measured about $780/dev.
+
+So the ~4x gap is not heavier usage. Under the cliff, seats *bundle and cap* usage at ~$200; past
+it, per-token billing *exposes* the full cost of the same engineer.
 
 | Self-hosted mode | GPU cost | Planning cost at 50 devs/GPU | Savings vs $200 seats | Savings vs $800 token bill |
 |---|---:|---:|---:|---:|
