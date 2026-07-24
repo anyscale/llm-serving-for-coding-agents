@@ -12,26 +12,26 @@ production 256K-cap figures as un-benchmarked.
 
 ## Summary
 
-**The default deployment is NVFP4 weights + MTP** (knobs 7 + 5, [§7](#7-nvfp4-weights-enable_nvfp4_weight--the-default)). NVFP4 weights win in both regimes; MTP is on by default for single-stream speed but should be turned off — or auto-managed via dynamic speculative decoding — for high concurrency, where it lowers throughput (see §7). The rows below are the per-knob effects; §7 has the full NVFP4-vs-FP8 and MTP-vs-no-MTP matrix.
+**The default deployment is NVFP4 weights + MTP** (knobs 2 + 6, [§2](#2-nvfp4-weights-enable_nvfp4_weight--the-default)). NVFP4 weights win in both regimes; MTP is on by default for single-stream speed but should be turned off — or auto-managed via dynamic speculative decoding — for high concurrency, where it lowers throughput (see §6). The rows below are the per-knob effects; §2 has the full NVFP4-vs-FP8 and MTP-vs-no-MTP matrix, and §6 explains the MTP concurrency crossover.
 
 | # | Knob | Off | On | Result | Default |
 |---|---|---|---|---|---|
 | 1 | `ENABLE_FAST_MODEL_LOADING` | HF download, ~85 s | RunAI Streamer, ~25 s | 3.4× faster load | Off |
-| 2 | `ENABLE_COMPILE_CACHE` | Recompile, 74.5 s | Prebuilt cache, 8.8 s | 8.5× faster compile | On |
-| 3 | `ENABLE_FP8_KV_CACHE` | bf16 KV, ~3.3× concurrency at 256K | fp8 KV, full 256K | 6.53× concurrency | On |
-| 4 | `ENABLE_CUDA_GRAPHS` | Eager, 15.9 tok/s | Graphs, 45.6 tok/s | 2.87× decode | On |
-| 5 | `ENABLE_SPEC_DECODE` | Base, 45.6 tok/s | MTP, 86.4 tok/s | 1.89× single-stream; −32% multi-user (§7) | On (turn off for high-conc) |
-| 7 | `ENABLE_NVFP4_WEIGHT` | FP8 weights | NVFP4 4-bit weights | +53% multi-user out tok/s (§7) | On (default) |
+| 2 | `ENABLE_NVFP4_WEIGHT` | FP8 weights | NVFP4 4-bit weights | +53% multi-user out tok/s (§2) | On (default) |
+| 3 | `ENABLE_COMPILE_CACHE` | Recompile, 74.5 s | Prebuilt cache, 8.8 s | 8.5× faster compile | On |
+| 4 | `ENABLE_FP8_KV_CACHE` | bf16 KV, ~3.3× concurrency at 256K | fp8 KV, full 256K | 6.53× concurrency | On |
+| 5 | `ENABLE_CUDA_GRAPHS` | Eager, 15.9 tok/s | Graphs, 45.6 tok/s | 2.87× decode | On |
+| 6 | `ENABLE_SPEC_DECODE` | Base, 45.6 tok/s | MTP, 86.4 tok/s | 1.89× single-stream; −32% multi-user (§2) | On (turn off for high-conc) |
 
 MTP (spec decode) is the biggest single-stream lever, but it **lowers multi-user throughput** (draft/verify
-overhead once the batch saturates the GPU — see §7), independent of weight format. It is **on by default**; for
+overhead once the batch saturates the GPU — see §6), independent of weight format. It is **on by default**; for
 high concurrency turn it off (`ENABLE_SPEC_DECODE=0`, `service-nvfp4-highconc.yaml`) or use
 [dynamic speculative decoding](https://docs.vllm.ai/en/stable/features/speculative_decoding/dynamic_speculative_decoding/),
 which auto-disables SD under load. Fast model loading is
 an opt-in because RunAI Streamer and MTP cannot coexist on vLLM 0.22.0
 ([vllm#42060](https://github.com/vllm-project/vllm/issues/42060)); NVFP4 loads from HF regardless. Prefix routing
 is off by default because the single-user replay data does not need replica affinity; see
-[Prefix Routing](#6-prefix-routing), and the built-in router needs the ray-llm 2.57 direct-streaming fix
+[Prefix Routing](#7-prefix-routing), and the built-in router needs the ray-llm 2.57 direct-streaming fix
 ([ray#64328](https://github.com/ray-project/ray/pull/64328)). See
 [`INCOMPATIBILITIES.md`](INCOMPATIBILITIES.md) for combinations that cannot coexist.
 
@@ -57,97 +57,10 @@ combined with MTP spec decode because the drafter reload path fails with the Run
 ([vllm#42060](https://github.com/vllm-project/vllm/issues/42060)); the control panel turns fast loading off
 automatically when spec decode is enabled.
 
-## 2. Compile Cache
-
-The service restores prebuilt inductor + AOT [torch.compile](https://docs.ray.io/en/latest/serve/llm/user-guides/deployment-initialization.html#torch-compile-cache) caches from S3, so a fresh replica skips compile.
-The cache was rebuilt and validated on 2026-06-30 for vLLM 0.22.0, RTX PRO 6000, FP8 weights + KV, TP=1,
-and 256K context. Rebuild under a new S3 prefix if the image, GPU, or flags change.
-
-| Compile path | Time |
-|---|---|
-| Cold compile | 74.5 s |
-| Prebuilt cache restored | 8.8 s |
-
-Verdict: keep on. Turning it off makes each scale-up compile cold.
-
-## 3. FP8 KV Cache
-
-`kv_cache_dtype="fp8"` roughly halves KV memory and lets the full 256K context fit on the 96 GB card.
-See [Quantized KV Cache — vLLM docs](https://docs.vllm.ai/en/stable/features/quantization/quantized_kvcache/) for supported formats and calibration options.
-
-| KV dtype | Max context that fits | Concurrency at 256K |
-|---|---|---|
-| bf16 | Full 256K | ~3.27× |
-| fp8 | Full 256K | 6.53× |
-
-Verdict: keep on — `fp8` is the right KV dtype here. Do **not** use `nvfp4` for the KV cache on this GPU:
-vLLM accepts the flag, but the FP4 attention kernel is sm_100/sm_103-only (datacenter Blackwell), so on the
-RTX PRO 6000 (SM120) it starts cleanly and then **crashes on the first request**
-([vllm#43562](https://github.com/vllm-project/vllm/issues/43562)). Valid KV dtypes on SM120 are `fp8`
-(= `fp8_e4m3`) and `fp8_e5m2`. (`mxfp4` is a weight-quantization format, not a KV-cache dtype at all.)
-
-## 4. CUDA Graphs
-
-[CUDA graphs](https://docs.vllm.ai/en/latest/design/cuda_graphs/) are enabled by leaving `enforce_eager` off. On real agent prompts with FP8 and `max_model_len`
-81920:
-
-| Config | Decode tok/s |
-|---|---|
-| Eager | 15.9 |
-| CUDA graphs | 45.6 |
-
-Verdict: keep on. This is the largest free speedup; turn it off only for debugging.
-
-## 5. Speculative Decoding
-
-[MTP (Multi-Token Prediction)](https://docs.vllm.ai/en/stable/features/speculative_decoding/mtp/) (`qwen3_next_mtp`) is coherent on Blackwell and improves decode from 45.6 to 86.4 tok/s on real agent
-prompts. It is on by default **for the FP8 single-user path**, where lower TPOT during active work matters more
-than the ~60 s RunAI cold-start win. **Note the concurrency crossover:** MTP's benefit shrinks as the batch fills
-and reverses under real multi-user load — [§7](#7-nvfp4-weights-enable_nvfp4_weight--the-default) shows it
-*lowers* throughput at C=16–32, which is why the NVFP4 multi-user default turns MTP off.
-
-`num_speculative_tokens` sweep on real session replay, concurrency 8, 60 s, MTP + fp8 KV + CUDA graphs,
-`max_model_len=81920`:
-
-| `num_speculative_tokens` | Out tok/s | Turns/s | TPOT mean | TTFT mean | vs spec=2 |
-|---|---|---|---|---|---|
-| 2 | 80 | 0.50 | 324.9 ms | 3.17 s | — |
-| 3 | 99 | 0.72 | 264.2 ms | 2.64 s | +24% tok/s, +44% turns/s, -19% TPOT |
-| 4 | 74 | 0.55 | 340.5 ms | 4.01 s | Regresses below 2 |
-
-Verdict: keep on for coding-agent use cases and use `num_speculative_tokens=3`. All three values served the
-real ~73K-token prompts with 0 errors; the vLLM
-0.19.1 long-context crash ([#40756](https://github.com/vllm-project/vllm/issues/40756)) did not reproduce
-on 0.22.
-
-Agent traffic is often prefill-heavy: 20K–74K-token prompts with short outputs. That means MTP will not erase
-prefill latency on large tool-use turns, but it still improves TPOT and turns/s on the measured coding-agent
-replay.
-
-Also tested: KV-cache offload with LMCache still fails with `Hybrid KV cache manager ... failed to convert
-the KV cache specs`.
-
-## 6. Prefix Routing
-
-[Prefix-aware routing](https://docs.ray.io/en/latest/serve/llm/user-guides/prefix-aware-routing.html) sends the
-next turn to the replica that cached the previous prefix. It is an opt-in setting here because the benchmark
-trace is single-user coding-agent data: most requests share the same system prompts, skills, and harness
-context, so each replica's local vLLM prefix cache sees similar reusable prefixes over time. For that traffic,
-round-robin is the simpler default and avoids coupling cache affinity to replica load.
-
-Prefix routing becomes more useful when the service handles many users with diverse byte-stable prefixes:
-different system prompts, skill sets, memory blocks, RAG documents, or agent harnesses. In that case, tune
-`imbalanced_threshold` and `match_rate_threshold` against real traffic. The goal is to improve prefix-cache
-reuse without sending too much work to one replica just because it already has a similar prefix cached.
-
-Under direct streaming, the stock router hangs on ray-llm 2.56. If this knob is enabled, the service uses
-`DirectStreamingPrefixCacheRouter` until [ray#64328](https://github.com/ray-project/ray/pull/64328) lands in
-ray-llm 2.57.
-
-## 7. NVFP4 Weights (`ENABLE_NVFP4_WEIGHT`) — the default
+## 2. NVFP4 Weights (`ENABLE_NVFP4_WEIGHT`) — the default
 
 Serve the 4-bit NVFP4 checkpoint ([`nvidia/Qwen3.6-27B-NVFP4`](https://huggingface.co/nvidia/Qwen3.6-27B-NVFP4))
-instead of FP8. This is a **weight** format (distinct from the `nvfp4` *KV-cache* dtype in §3, which crashes on
+instead of FP8. This is a **weight** format (distinct from the `nvfp4` *KV-cache* dtype in §4, which crashes on
 SM120). Requires the `ray-llm:2.56.1-py312-cu130` image ([`Containerfile.nvfp4`](../Containerfile.nvfp4)).
 NVFP4 weights are ~22 GB vs FP8 ~27 GB (more KV headroom). Note SM120 has no dense-NVFP4 kernel in vLLM yet
 ([vllm#31085](https://github.com/vllm-project/vllm/issues/31085),
@@ -156,7 +69,8 @@ weight-only dequant path (log: `marlin.py: Your GPU does not have native support
 here is memory-bandwidth per token, not native FP4 math.
 
 The checkpoint **does carry the MTP drafter** (`config.json`: `mtp_num_hidden_layers=1`, quant `ignore: [mtp*]`),
-so NVFP4+MTP runs and is the shipped default; for high concurrency turn MTP off (see the verdict).
+so NVFP4+MTP runs and is the shipped default. MTP's concurrency trade-off is the same as for FP8 and is
+documented once in [§6](#6-speculative-decoding); this section is the NVFP4-vs-FP8 comparison.
 
 Measured 2026-07-23 on 1× RTX PRO 6000 (`g7e.4xlarge`), **vLLM 0.23.0** (`ray-llm:2.56.1`), fp8 KV + CUDA graphs.
 Two harnesses (the `ds_bench_agent*` / results JSON live in the build workspace, not this repo — see [TODO](#todo)):
@@ -181,25 +95,120 @@ a single-stream decode microbench (fixed prompt, 256 out tok — the FP8-no-MTP 
 | NVFP4 + MTP | 205 | 165 | 237 | 793 ms |
 | FP8 + MTP | — | 160 | 269 | 946 ms |
 
-The two regimes want opposite MTP settings. At low concurrency the GPU is idle, so **both** NVFP4's 4-bit weight
-bandwidth **and** MTP's speculative decoding help → NVFP4+MTP is fastest single-stream (121 tok/s, +40% over
-FP8+MTP). Under multi-user load the batch already saturates the GPU, so MTP's draft+verify overhead becomes pure
-cost: adding MTP to NVFP4 *drops* C=16 throughput 244→165 and nearly doubles TPOT. FP8+MTP shows the same MTP
-drag (160 @C16). So **MTP is the lever that flips with concurrency**, independent of weight format.
+**NVFP4 beats FP8 at a matched MTP setting, in both regimes.** Single-stream, NVFP4+MTP leads FP8+MTP by +40%
+(121 vs 86 tok/s); multi-user, NVFP4 (no MTP) leads on aggregate throughput and TPOT. The *MTP* dimension of
+these tables — why MTP helps single-stream but hurts multi-user — is the concurrency crossover, which is
+explained in [§6](#6-speculative-decoding); here the takeaway is simply that NVFP4 is the better weight format.
 
-**Verdict — NVFP4 weights always; MTP is the concurrency-dependent knob:**
+**Verdict — NVFP4 weights always; MTP is the concurrency-dependent knob (see [§6](#6-speculative-decoding)):**
 - **Default: NVFP4 + MTP** ([`service-nvfp4.yaml`](../service-nvfp4.yaml)) — fastest single-stream (121 tok/s) and
   strong at low/moderate load. NVFP4+MTP is a distinct compile graph with no prebuilt cache, so it cold-compiles.
 - **High concurrency: NVFP4, MTP off** ([`service-nvfp4-highconc.yaml`](../service-nvfp4-highconc.yaml)) — +48% out
-  tok/s and ~half the TPOT vs NVFP4+MTP at C=16, and it matches the prebuilt compile cache (fast scale-up). Or keep
-  MTP on and let [dynamic speculative decoding](https://docs.vllm.ai/en/stable/features/speculative_decoding/dynamic_speculative_decoding/)
-  disable it under load automatically (tested with Eagle/Eagle-3/DFlash; `qwen3_next_mtp` may or may not work OOTB).
+  tok/s and ~half the TPOT vs NVFP4+MTP at C=16, and it matches the prebuilt compile cache (fast scale-up).
 - FP8 + MTP remains an alternative on the stock `ray-llm:2.56.0` image (no cu13; supports image input).
 
 **Correctness:** all configs produce coherent output + structured `qwen3_coder` tool calls; no NVFP4 garbling.
 
 **Caveat:** the fair replay has 48 users / short windows — treat the absolute numbers as indicative and the
 *ranking* as the takeaway. Re-evaluate when native dense-NVFP4 SM120 kernels land (they'd lift NVFP4 further).
+
+## 3. Compile Cache
+
+The service restores prebuilt inductor + AOT [torch.compile](https://docs.ray.io/en/latest/serve/llm/user-guides/deployment-initialization.html#torch-compile-cache) caches from S3, so a fresh replica skips compile.
+The cache was rebuilt and validated on 2026-06-30 for vLLM 0.22.0, RTX PRO 6000, FP8 weights + KV, TP=1,
+and 256K context. Rebuild under a new S3 prefix if the image, GPU, or flags change.
+
+| Compile path | Time |
+|---|---|
+| Cold compile | 74.5 s |
+| Prebuilt cache restored | 8.8 s |
+
+Verdict: keep on. Turning it off makes each scale-up compile cold.
+
+## 4. FP8 KV Cache
+
+`kv_cache_dtype="fp8"` roughly halves KV memory and lets the full 256K context fit on the 96 GB card.
+See [Quantized KV Cache — vLLM docs](https://docs.vllm.ai/en/stable/features/quantization/quantized_kvcache/) for supported formats and calibration options.
+
+| KV dtype | Max context that fits | Concurrency at 256K |
+|---|---|---|
+| bf16 | Full 256K | ~3.27× |
+| fp8 | Full 256K | 6.53× |
+
+Verdict: keep on — `fp8` is the right KV dtype here. Do **not** use `nvfp4` for the KV cache on this GPU:
+vLLM accepts the flag, but the FP4 attention kernel is sm_100/sm_103-only (datacenter Blackwell), so on the
+RTX PRO 6000 (SM120) it starts cleanly and then **crashes on the first request**
+([vllm#43562](https://github.com/vllm-project/vllm/issues/43562)). Valid KV dtypes on SM120 are `fp8`
+(= `fp8_e4m3`) and `fp8_e5m2`. (`mxfp4` is a weight-quantization format, not a KV-cache dtype at all.)
+
+## 5. CUDA Graphs
+
+[CUDA graphs](https://docs.vllm.ai/en/latest/design/cuda_graphs/) are enabled by leaving `enforce_eager` off. On real agent prompts with FP8 and `max_model_len`
+81920:
+
+| Config | Decode tok/s |
+|---|---|
+| Eager | 15.9 |
+| CUDA graphs | 45.6 |
+
+Verdict: keep on. This is the largest free speedup; turn it off only for debugging.
+
+## 6. Speculative Decoding
+
+[MTP (Multi-Token Prediction)](https://docs.vllm.ai/en/stable/features/speculative_decoding/mtp/) (`qwen3_next_mtp`) is coherent on Blackwell and improves decode from 45.6 to 86.4 tok/s on real agent
+prompts. It is on by default because lower TPOT during active single-user work matters more than the ~60 s
+RunAI cold-start win.
+
+**MTP is the lever that flips with concurrency — independent of weight format.** At low concurrency the GPU is
+idle, so MTP's speculative decode is a clear win; it is the biggest single-stream lever and it stacks with NVFP4
+(NVFP4+MTP is the fastest single-stream config at 121 tok/s, [§2](#2-nvfp4-weights-enable_nvfp4_weight--the-default)).
+But once real multi-user load saturates the batch, MTP's draft+verify overhead becomes pure cost and *lowers*
+aggregate throughput. On the fair multi-user replay (full table in [§2](#2-nvfp4-weights-enable_nvfp4_weight--the-default)),
+adding MTP to NVFP4 drops C=16 throughput 244→165 tok/s and nearly doubles TPOT (414→793 ms); FP8+MTP shows the
+same drag (160 @C16). The crossover is a property of speculative decoding in general, not of the weight format.
+
+So MTP is **on by default** for the single-user / low-concurrency path; for high concurrency either turn it off
+(`ENABLE_SPEC_DECODE=0`, [`service-nvfp4-highconc.yaml`](../service-nvfp4-highconc.yaml)) or keep it on and let
+[dynamic speculative decoding](https://docs.vllm.ai/en/stable/features/speculative_decoding/dynamic_speculative_decoding/)
+disable it under load automatically (tested with Eagle/Eagle-3/DFlash; `qwen3_next_mtp` may or may not work OOTB).
+
+`num_speculative_tokens` sweep on real session replay, concurrency 8, 60 s, MTP + fp8 KV + CUDA graphs,
+`max_model_len=81920`:
+
+| `num_speculative_tokens` | Out tok/s | Turns/s | TPOT mean | TTFT mean | vs spec=2 |
+|---|---|---|---|---|---|
+| 2 | 80 | 0.50 | 324.9 ms | 3.17 s | — |
+| 3 | 99 | 0.72 | 264.2 ms | 2.64 s | +24% tok/s, +44% turns/s, -19% TPOT |
+| 4 | 74 | 0.55 | 340.5 ms | 4.01 s | Regresses below 2 |
+
+Verdict: keep on for coding-agent use cases and use `num_speculative_tokens=3`. All three values served the
+real ~73K-token prompts with 0 errors; the vLLM
+0.19.1 long-context crash ([#40756](https://github.com/vllm-project/vllm/issues/40756)) did not reproduce
+on 0.22.
+
+Agent traffic is often prefill-heavy: 20K–74K-token prompts with short outputs. That means MTP will not erase
+prefill latency on large tool-use turns, but it still improves TPOT and turns/s on the measured coding-agent
+replay.
+
+Also tested: KV-cache offload with LMCache still fails with `Hybrid KV cache manager ... failed to convert
+the KV cache specs`.
+
+## 7. Prefix Routing
+
+[Prefix-aware routing](https://docs.ray.io/en/latest/serve/llm/user-guides/prefix-aware-routing.html) sends the
+next turn to the replica that cached the previous prefix. It is an opt-in setting here because the benchmark
+trace is single-user coding-agent data: most requests share the same system prompts, skills, and harness
+context, so each replica's local vLLM prefix cache sees similar reusable prefixes over time. For that traffic,
+round-robin is the simpler default and avoids coupling cache affinity to replica load.
+
+Prefix routing becomes more useful when the service handles many users with diverse byte-stable prefixes:
+different system prompts, skill sets, memory blocks, RAG documents, or agent harnesses. In that case, tune
+`imbalanced_threshold` and `match_rate_threshold` against real traffic. The goal is to improve prefix-cache
+reuse without sending too much work to one replica just because it already has a similar prefix cached.
+
+Under direct streaming, the stock router hangs on ray-llm 2.56. If this knob is enabled, the service uses
+`DirectStreamingPrefixCacheRouter` until [ray#64328](https://github.com/ray-project/ray/pull/64328) lands in
+ray-llm 2.57.
 
 ## Direct Streaming
 

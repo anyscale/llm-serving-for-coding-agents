@@ -5,7 +5,7 @@
 # The defaults are the validated coding-agent setup: FP8 weights + FP8 KV + full 256K context (6.53×
 # concurrency), CUDA graphs, MTP speculative decoding, and the prebuilt compile cache. Fast S3 model
 # loading is kept below as an opt-in cold-start alternative, but it is not the default because it conflicts
-# with MTP on vLLM 0.22.0. ENABLE_NVFP4_WEIGHT (knob 7) switches to 4-bit NVFP4 weights — the DEFAULT for the
+# with MTP on vLLM 0.22.0. ENABLE_NVFP4_WEIGHT (knob 2) switches to 4-bit NVFP4 weights — the DEFAULT for the
 # shipped multi-user service (it wins the multi-user benchmark; needs the ray-llm 2.56.1 image). This FP8
 # path stays as the single-user / low-concurrency alternative.
 # Full measurements + the "knobs that can't be combined" matrix:
@@ -25,46 +25,48 @@ import os
 #       ENABLE_FAST_MODEL_LOADING = True
 ENABLE_FAST_MODEL_LOADING = False
 
-# (2) COMPILE CACHE — download the prebuilt inductor + AOT torch.compile caches from S3 so a cold replica
+# (2) NVFP4 WEIGHTS — serve the 4-bit NVFP4 *weight* checkpoint (nvidia/Qwen3.6-27B-NVFP4) instead of FP8.
+#     The name says WEIGHT deliberately: this quantizes the model WEIGHTS only. The KV cache is a separate
+#     axis and stays fp8 — the nvfp4 *KV-cache* dtype is datacenter-Blackwell-only and crashes on SM120
+#     (vllm#43562), so there is no NVFP4-KV toggle here. ~22 GB weights vs FP8 ~27 GB (more KV headroom).
+#     DEFAULT for the shipped service (service-nvfp4.yaml): it wins the multi-user fair replay
+#     (notes/BENCHMARKS.md §2). Runs the Marlin (non-native) FP4 path on SM120 — no dense-NVFP4 SM120 kernel
+#     in vLLM yet (vllm#31085 / #33417 cover MoE only). TEXT-ONLY (multimodal path crashes on this checkpoint
+#     / SM120; use FP8 for image input). MTP interacts with concurrency here (fastest single-stream, slower
+#     multi-user) the same way it does for FP8 — see knob 6 (SPECULATIVE DECODING) for that trade-off.
+#     ⚠ REQUIRES the ray-llm 2.56.1 (cu13) image (`Containerfile.nvfp4`). Deploy via `service-nvfp4.yaml`.
+ENABLE_NVFP4_WEIGHT = os.environ.get("ENABLE_NVFP4_WEIGHT", "0") == "1"
+
+# (3) COMPILE CACHE — download the prebuilt inductor + AOT torch.compile caches from S3 so a cold replica
 #     skips the whole compile (validated 74.5s -> 8.8s).  OFF -> each fresh replica compiles cold.
 ENABLE_COMPILE_CACHE = True
 
-# (3) FP8 KV CACHE — store K/V in fp8: ~half the KV memory, which is what lets the full 256K context fit
+# (4) FP8 KV CACHE — store K/V in fp8: ~half the KV memory, which is what lets the full 256K context fit
 #     (6.53× concurrency on 96GB).  OFF -> default bf16 KV; 256K won't fit, so lower max_model_len.
 ENABLE_FP8_KV_CACHE = True
 
-# (4) CUDA GRAPHS — the single biggest free decode win (~2.87x on Blackwell).  ON = no enforce_eager.
+# (5) CUDA GRAPHS — the single biggest free decode win (~2.87x on Blackwell).  ON = no enforce_eager.
 #     OFF -> enforce_eager=True (only to debug, or to fit spec-decode on a small GPU; see notes/).
 ENABLE_CUDA_GRAPHS = True
 
-# (5) SPECULATIVE DECODING (MTP) — env-settable, default ON. MTP is the biggest single-stream decode win
+# (6) SPECULATIVE DECODING (MTP) — env-settable, default ON. MTP is the biggest single-stream decode win
 #     (NVFP4+MTP 121 tok/s, FP8+MTP 86). BUT its draft/verify overhead LOWERS throughput once the GPU is
 #     saturated by many concurrent users — this is a property of speculative decoding in general, not
-#     weight-format specific (notes/BENCHMARKS.md §5/§7). For high-concurrency deployments either set
-#     ENABLE_SPEC_DECODE=0 (service-nvfp4-highconc.yaml) or try vLLM's dynamic speculative decoding, which
-#     auto-disables SD as the running batch grows:
+#     weight-format specific: it holds for both NVFP4 and FP8 (notes/BENCHMARKS.md §6; the NVFP4-vs-FP8
+#     matrix is in §2). For high-concurrency deployments either set ENABLE_SPEC_DECODE=0
+#     (service-nvfp4-highconc.yaml) or try vLLM's dynamic speculative decoding, which auto-disables SD as
+#     the running batch grows:
 #     https://docs.vllm.ai/en/stable/features/speculative_decoding/dynamic_speculative_decoding/
 #     (tested with Eagle/Eagle-3/DFlash; qwen3_next_mtp may or may not work out of the box). ⚠ Needs the HF
 #     loader, so it turns FAST MODEL LOADING off (vllm#42060).
 ENABLE_SPEC_DECODE = os.environ.get("ENABLE_SPEC_DECODE", "1") == "1"
 
-# (6) PREFIX-AWARE ROUTING — send a session's turns to the replica that cached its prefix. Keep OFF for the
+# (7) PREFIX-AWARE ROUTING — send a session's turns to the replica that cached its prefix. Keep OFF for the
 #     single-user coding-agent trace used here: most requests share the same system prompts, skills, and
 #     harness context, so round-robin still benefits from each replica's local vLLM prefix cache. Consider
 #     enabling only for multi-user traffic with diverse byte-stable prefixes, then tune the imbalance knobs
 #     so affinity does not overload one replica. Only matters with max_replicas > 1.
 ENABLE_PREFIX_ROUTING = False
-
-# (7) NVFP4 WEIGHTS — serve the 4-bit NVFP4 *weight* checkpoint (nvidia/Qwen3.6-27B-NVFP4) instead of FP8.
-#     The name says WEIGHT deliberately: this quantizes the model WEIGHTS only. The KV cache is a separate
-#     axis and stays fp8 — the nvfp4 *KV-cache* dtype is datacenter-Blackwell-only and crashes on SM120
-#     (vllm#43562), so there is no NVFP4-KV toggle here. ~22 GB weights vs FP8 ~27 GB (more KV headroom).
-#     DEFAULT for the shipped service (service-nvfp4.yaml): it wins the multi-user fair replay
-#     (notes/BENCHMARKS.md §7) and, with MTP, is also the fastest single-stream config. Runs the Marlin
-#     (non-native) FP4 path on SM120 — no dense-NVFP4 SM120 kernel in vLLM yet (vllm#31085 / #33417 cover MoE
-#     only). TEXT-ONLY (multimodal path crashes on this checkpoint / SM120; use FP8 for image input).
-#     ⚠ REQUIRES the ray-llm 2.56.1 (cu13) image (`Containerfile.nvfp4`). Deploy via `service-nvfp4.yaml`.
-ENABLE_NVFP4_WEIGHT = os.environ.get("ENABLE_NVFP4_WEIGHT", "0") == "1"
 
 # DIRECT STREAMING is REQUIRED for this demo (Parts 1 & 2 connect Claude Code / Codex / Cursor straight to
 # native /v1/messages + /v1/responses), so it is NOT a toggle — it's always on. It's enabled at the SERVICE
@@ -74,18 +76,15 @@ ENABLE_NVFP4_WEIGHT = os.environ.get("ENABLE_NVFP4_WEIGHT", "0") == "1"
 # ═════════════════════════════════════════════════════════════════════════════════════════════
 
 # NVFP4 handling: the RunAI S3 mirror is FP8, so NVFP4 always loads from HF (fast-loading off). MTP stays ON
-# by default (knob 5) even under NVFP4 — the checkpoint carries the MTP drafter. Heads-up: MTP maximizes
-# single-stream decode but LOWERS throughput under high concurrency (notes/BENCHMARKS.md §7); for many
-# concurrent users set ENABLE_SPEC_DECODE=0 (service-nvfp4-highconc.yaml) or try dynamic speculative decoding.
-# fp8 KV is kept (nvfp4 KV crashes on SM120).
+# by default (knob 6) even under NVFP4 — the checkpoint carries the MTP drafter; its concurrency trade-off is
+# the same as for FP8 and is documented once at knob 6. fp8 KV is kept (nvfp4 KV crashes on SM120).
 if ENABLE_NVFP4_WEIGHT:
     ENABLE_FAST_MODEL_LOADING = False
     if ENABLE_SPEC_DECODE:
         # NVFP4+MTP is a different torch.compile graph than the prebuilt (no-MTP) cache -> cold compile.
         ENABLE_COMPILE_CACHE = False
-        print("[config] NVFP4 weights + MTP (default). MTP may LOWER throughput under high concurrency "
-              "(BENCHMARKS §7) -> for many concurrent users set ENABLE_SPEC_DECODE=0 or use dynamic speculative "
-              "decoding. Compile cache off for the MTP graph (cold compile).")
+        print("[config] NVFP4 weights + MTP (default). Compile cache off for the MTP graph (cold compile). "
+              "For high concurrency turn MTP off (ENABLE_SPEC_DECODE=0) or use dynamic spec decoding — see knob 6.")
     else:
         print("[config] NVFP4 weights, no MTP (high-concurrency) -> using the prebuilt NVFP4 compile cache.")
 
@@ -148,7 +147,7 @@ if ENABLE_FAST_MODEL_LOADING:
 else:
     model_source = HF_SOURCE
 
-# (7) NVFP4 weights set the source (fast-loading already forced off above). The spec block below leaves
+# (2) NVFP4 weights set the source (fast-loading already forced off above). The spec block below leaves
 #     this untouched for NVFP4 (NVFP4+MTP keeps the NVFP4 checkpoint, which carries its own MTP drafter).
 #     NVFP4 is TEXT-ONLY: the multimodal path crashes on this NVFP4 checkpoint / SM120 ("'NoneType' object
 #     has no attribute 'size'"), so force image/video limits to 0. Coding-agent traffic is text; use FP8 if
@@ -157,24 +156,24 @@ if ENABLE_NVFP4_WEIGHT:
     model_source = NVFP4_SOURCE
     engine_kwargs["limit_mm_per_prompt"] = {"image": 0, "video": 0}
 
-# (3) FP8 KV cache
+# (4) FP8 KV cache
 if ENABLE_FP8_KV_CACHE:
     engine_kwargs["kv_cache_dtype"] = "fp8"
 
-# (4) CUDA graphs (default on; only set enforce_eager to turn them OFF)
+# (5) CUDA graphs (default on; only set enforce_eager to turn them OFF)
 if not ENABLE_CUDA_GRAPHS:
     engine_kwargs["enforce_eager"] = True
 
-# (5) Speculative decoding (MTP). The guard above guarantees the HF loader is in use here (#42060).
+# (6) Speculative decoding (MTP). The guard above guarantees the HF loader is in use here (#42060).
 if ENABLE_SPEC_DECODE:
     if not ENABLE_NVFP4_WEIGHT:
         model_source = HF_SOURCE   # FP8+MTP: undo any RunAI load_format; NVFP4 keeps its own checkpoint
     # num_speculative_tokens=3 is the measured sweet spot on the real agent replay: +24% out tok/s,
     # +44% turns/s, -19% TPOT vs 2. 4 REGRESSES below 2 (draft/verify overhead > acceptance gain).
-    # See notes/BENCHMARKS.md knob 5. (MTP served the traces' ~73K-tok prompts with 0 errors on vLLM 0.22.)
+    # See notes/BENCHMARKS.md §6. (MTP served the traces' ~73K-tok prompts with 0 errors on vLLM 0.22.)
     engine_kwargs["speculative_config"] = {"method": "qwen3_next_mtp", "num_speculative_tokens": 3}
 
-# (2) Compile cache: point vLLM at the cache_dir + download both caches from S3 before engine init.
+# (3) Compile cache: point vLLM at the cache_dir + download both caches from S3 before engine init.
 # NVFP4 uses its own prefixes (different vLLM version + quant); FP8 uses the original 2026-06-30 set.
 callback_config = None
 if ENABLE_COMPILE_CACHE:
@@ -212,7 +211,7 @@ deployment_config = dict(
     max_ongoing_requests=64,
 )
 
-# (6) Prefix-aware routing (only with max_replicas > 1 AND diverse stable prefixes).
+# (7) Prefix-aware routing (only with max_replicas > 1 AND diverse stable prefixes).
 if ENABLE_PREFIX_ROUTING:
     # Tune these thresholds on real traffic. Too much affinity can overload the one replica with the closest
     # prefix cache, even when another replica has spare capacity.
