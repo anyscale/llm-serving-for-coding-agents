@@ -5,19 +5,18 @@
 #
 # ── What makes it naive ─────────────────────────────────────────────────────────────
 #
-# GPU choice: 4× L4 (g6.12xlarge), tensor_parallel_size=4
-#   All 4 L4s sit on one node, connected via PCIe (no NVLink).
-#   L4 has the lowest memory bandwidth of serving GPUs (~300 GB/s),
-#   and PCIe interconnect adds communication overhead between the GPUs.
-#   (The FP8 model actually fits on a single bigger GPU — see Part 3.)
+# GPU: 1× NVIDIA RTX PRO 6000 96GB (g7e.4xlarge, tensor_parallel_size=1) — the SAME shape
+#   Part 3 optimizes on. Part 1 deliberately keeps the hardware identical so the "before vs.
+#   after" in this tutorial is about the SOFTWARE optimizations alone, not a GPU swap. The FP8
+#   weights fit comfortably on this single GPU with no tensor-parallel comms.
 #
-# Capacity: single replica, 652,346-token KV cache (4.98× raw capacity at 128K).
-#
-# Cold start: weights downloaded from S3 every time (~85 s).
-#
-# Compilation: no compile cache, so each fresh replica recompiles (~90–137 s).
-#
-# Missing: no speculative decoding, no prefix-aware routing.
+# What it's missing (every one of these is added in Part 3):
+#   - bf16 KV cache (the vLLM default), not FP8 KV — so 128K context here, not the full 256K.
+#   - no torch.compile cache — each fresh replica recompiles cold.
+#   - no fast S3 weight loader (RunAI Streamer) — weights download on every cold start.
+#   - no speculative decoding (MTP).
+#   - no prefix-aware routing.
+#   - single replica, no autoscaling.
 #
 # ── One thing it DOES enable: direct streaming ──────────────────────────────────────
 #
@@ -52,18 +51,22 @@ llm_config = LLMConfig(
         model_id="qwen3.6-27b",
         model_source="s3://llm-guide/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/",
     ),
-    accelerator_type="L4",
+    # NOTE: accelerator_type is intentionally omitted — Ray Serve LLM's LLMConfig enum rejects
+    # "RTX-PRO-6000". service_naive.yaml pins the g7e RTX PRO 6000 node and the replica's GPU request
+    # places there (same approach as Part 3).
     deployment_config=dict(
         # Single replica: no autoscaling, no routing.
         autoscaling_config=dict(min_replicas=1, max_replicas=1),
     ),
     runtime_env=dict(env_vars={"HF_HUB_ENABLE_HF_TRANSFER": "1"}),
     engine_kwargs=dict(
-        tensor_parallel_size=4,        # 4xL4 GPUs on one g6.12xlarge (PCIe, no NVLink)
-        max_model_len=131072,          # 128K
-        gpu_memory_utilization=0.85,   
-        # kv_cache_dtype left at the default (bf16). GPU KV cache: 652,346 tokens,
-        # 10.38 GiB/GPU, 4.98× raw concurrency at 128K. (vLLM 0.22.0 log output.)
+        tensor_parallel_size=1,        # single RTX PRO 6000 96GB (g7e.4xlarge) — no TP comms
+        max_model_len=131072,          # 128K. NAIVE: with the default bf16 KV, the full 256K needs FP8
+                                       # KV — that's a Part 3 optimization, so it's left off here.
+        gpu_memory_utilization=0.85,
+        # kv_cache_dtype left at the vLLM default (bf16) — no FP8 KV optimization here. On this single
+        # 96GB GPU, 128K context fits with ample headroom; exact concurrency isn't separately benchmarked
+        # for this naive config (Part 3 measures the FP8-KV / 256K numbers).
         max_num_seqs=16,
         max_num_batched_tokens=8192,
         enable_prefix_caching=True,
@@ -72,9 +75,8 @@ llm_config = LLMConfig(
         tool_call_parser="qwen3_coder",
         enable_auto_tool_choice=True,
         # Image input ENABLED by default (Qwen3.6-27B is a VLM). Set image:0 for a text-only endpoint.
-        # NOTE: verified on the Part 3 single-GPU 96GB shape; this 4x L4 (24GB) baseline is tighter and
-        # was not separately load-tested — if you hit OOM at startup, lower max_pixels (mm_processor_kwargs)
-        # or reduce max_model_len.
+        # Verified on this single-GPU 96GB shape in Part 3; if you hit OOM at startup, lower max_pixels
+        # (mm_processor_kwargs) or reduce max_model_len.
         limit_mm_per_prompt={"image": 4, "video": 0},
     ),
 )
