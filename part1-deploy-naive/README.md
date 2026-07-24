@@ -3,10 +3,11 @@
 Goal: get a working OpenAI-compatible endpoint with the **least** configuration. It's deliberately
 un-optimized — the point is to prove the model serves and to give you a baseline to optimize later.
 
-**What "naive" means here:** 4× L4 (`g6.12xlarge`, TP=4), single replica, weights downloaded from remote storage (could also be huggingface) on every cold start,
-no compile cache, no autoscaling, no speculative/routing tricks.
-It works; it's just the wrong shape for a team (≈ one concurrent user, slow cold start) — and 4× L4 isn't
-the optimal GPU for this model (the FP8 weights fit on a single bigger GPU; see Part 3).
+**What "naive" means here:** 1× RTX PRO 6000 96GB (`g7e.4xlarge`, TP=1), single replica, weights downloaded from remote storage (could also be huggingface) on every cold start,
+default bf16 KV cache (so 128K context, not the full 256K), no compile cache, no autoscaling, no speculative/routing tricks.
+It runs on the **same GPU as the optimized Part 3 service** — Part 1 keeps the hardware identical on purpose, so the
+"before vs. after" is about the software optimizations alone, not a GPU change. It works; it's just the wrong
+*shape* for a team (≈ one concurrent user, slow cold start) until you add the Part 3 optimizations.
 
 ## Files
 - `serve_qwen3_6_27b_naive.py` — the Ray Serve LLM app (one `LLMConfig`, built with `build_openai_app`).
@@ -15,7 +16,7 @@ the optimal GPU for this model (the FP8 weights fit on a single bigger GPU; see 
 
 ## Deploy
 
-Run it in an **Anyscale workspace** on the image + 4× L4 node from **Why this image / GPU** (below).
+Run it in an **Anyscale workspace** on the image + 1× RTX PRO 6000 96GB (`g7e.4xlarge`) node from **Why this image / GPU** (below).
 Set the two direct-streaming env vars on the workspace (**Dependencies → environment variables**) so
 the Ray Serve controller inherits them at startup:
 
@@ -88,26 +89,22 @@ also exists — handy for a service *without* direct streaming — but this repo
   upgrades the base's vLLM 0.22.0 to **0.23.0** so the native `/v1/messages` endpoint accepts Claude Code's
   request schema. Stock `ray-llm:2.56.0` (vLLM 0.22.0) works for Codex and Cursor, but 0.22.0 rejects Claude
   Code's `system` role; the older GA `ray-llm:2.55.x` ships vLLM 0.18 (too old) and fails to load Qwen3.6.
-- **4× L4 / TP=4** — a common, widely-available GPU shape (`g6.12xlarge`) used here as the baseline. It's
-  not optimal — the FP8 weights fit on a single bigger GPU; an optimized variant moves to **1× RTX PRO
-  6000 96GB** (TP=1) to serve the model's full 256K context in FP8.
+- **1× RTX PRO 6000 96GB / TP=1** (`g7e.4xlarge`) — the **same GPU Part 3 optimizes on**. Part 1 uses it as
+  the un-optimized baseline: the FP8 weights fit on this single GPU (no tensor-parallel comms), and holding
+  the hardware fixed isolates the tutorial's before/after to the software optimizations. Part 3 then adds FP8
+  KV cache, full 256K context, MTP speculative decoding, a compile cache, and autoscaling on top of it.
+  (Use `g7e.4xlarge` or larger, not `g7e.2xlarge` — its 64 GiB host RAM OOMs while loading the 27B.)
 
 ## KV cache dtype
 
-`serve_qwen3_6_27b_naive.py` leaves `kv_cache_dtype` at the vLLM default (bf16).
+`serve_qwen3_6_27b_naive.py` leaves `kv_cache_dtype` at the vLLM default (**bf16**) — that's the naive
+choice. On this single 96GB GPU the FP8 weights leave plenty of room for a bf16 KV cache at `max_model_len=131072`
+(128K), so the endpoint serves comfortably; capacity for this specific naive config isn't separately
+benchmarked here.
 
-**Validated capacity** (vLLM 0.22.0, TP=4, `gpu_memory_utilization=0.85`, `max_model_len=131072`):
-
-| Metric | Value |
-|---|---|
-| Available KV cache memory | **10.38 GiB / GPU** (~41.5 GiB total) |
-| GPU KV cache size | **652,346 tokens** |
-| Max concurrency @ 128K tokens/request | **4.98×** (raw cache capacity) |
-
-> ⚠️ The 4.98× is the **raw KV cache capacity** (pure storage). Practical concurrency under
-> real serving load will be lower due to decode-phase memory fragmentation, vLLM's safety margins,
-> and PCIe bandwidth saturation between the 4 L4 GPUs (~300 GB/s each). Actual concurrent user
-> capacity should be measured with real workloads.
+> **This is the main knob Part 3 turns.** Switching to an **FP8 KV cache** roughly halves KV memory, which
+> is what lets the full **256K** context fit on the same GPU and pushes 256K concurrency from ~3.27× to
+> **6.53×**. Part 1 leaves it at bf16 / 128K on purpose; see Part 3 for the measured FP8-KV numbers.
 
 
 → Next: **[Part 2 — connect Claude Code / Codex / Cursor](../part2-connect-clients-production/README.md)** (no proxy).
