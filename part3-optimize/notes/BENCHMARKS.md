@@ -12,7 +12,7 @@ production 256K-cap figures as un-benchmarked.
 
 ## Summary
 
-Each row compares one knob off vs on, on the same hardware.
+**The default deployment is NVFP4 without MTP** (knob 7, [§7](#7-nvfp4-weights-enable_nvfp4--the-multi-user-default)) — it wins the multi-user workload this service targets. The rows below are the per-knob effects on the FP8 baseline (now the single-user alternative); §7 has the NVFP4-vs-FP8 and MTP-vs-no-MTP comparison that sets the default.
 
 | # | Knob | Off | On | Result | Default |
 |---|---|---|---|---|---|
@@ -20,14 +20,16 @@ Each row compares one knob off vs on, on the same hardware.
 | 2 | `ENABLE_COMPILE_CACHE` | Recompile, 74.5 s | Prebuilt cache, 8.8 s | 8.5× faster compile | On |
 | 3 | `ENABLE_FP8_KV_CACHE` | bf16 KV, ~3.3× concurrency at 256K | fp8 KV, full 256K | 6.53× concurrency | On |
 | 4 | `ENABLE_CUDA_GRAPHS` | Eager, 15.9 tok/s | Graphs, 45.6 tok/s | 2.87× decode | On |
-| 5 | `ENABLE_SPEC_DECODE` | Base, 45.6 tok/s | MTP, 86.4 tok/s | 1.89× decode | On |
+| 5 | `ENABLE_SPEC_DECODE` | Base, 45.6 tok/s | MTP, 86.4 tok/s | 1.89× single-stream decode | On (FP8) / off (NVFP4) |
+| 7 | `ENABLE_NVFP4` | FP8 weights | NVFP4 4-bit weights | +53% multi-user out tok/s (§7) | On (multi-user default) |
 
-Spec decode is on by default because the tutorial targets coding-agent traffic, where lower TPOT during
-multi-token generation matters more than shaving about a minute from cold weight load. Fast model loading is
-kept as an opt-in because RunAI Streamer and MTP cannot currently coexist on vLLM 0.22.0
-([vllm#42060](https://github.com/vllm-project/vllm/issues/42060)). Prefix routing is off by default because the
-single-user replay data in this tutorial does not need replica affinity; see [Prefix Routing](#6-prefix-routing)
-for when to opt in. The built-in router also needs the ray-llm 2.57 direct-streaming fix
+MTP (spec decode) is the biggest single-stream lever, but it **hurts multi-user throughput** (draft/verify
+overhead once the batch saturates the GPU — see §7), so it is on for the FP8 single-user path and **off for the
+NVFP4 multi-user default**; set `ENABLE_SPEC_DECODE=1` for the single-user NVFP4+MTP config. Fast model loading is
+an opt-in because RunAI Streamer and MTP cannot coexist on vLLM 0.22.0
+([vllm#42060](https://github.com/vllm-project/vllm/issues/42060)); NVFP4 loads from HF regardless. Prefix routing
+is off by default because the single-user replay data does not need replica affinity; see
+[Prefix Routing](#6-prefix-routing), and the built-in router needs the ray-llm 2.57 direct-streaming fix
 ([ray#64328](https://github.com/ray-project/ray/pull/64328)). See
 [`INCOMPATIBILITIES.md`](INCOMPATIBILITIES.md) for combinations that cannot coexist.
 
@@ -97,8 +99,10 @@ Verdict: keep on. This is the largest free speedup; turn it off only for debuggi
 ## 5. Speculative Decoding
 
 [MTP (Multi-Token Prediction)](https://docs.vllm.ai/en/stable/features/speculative_decoding/mtp/) (`qwen3_next_mtp`) is coherent on Blackwell and improves decode from 45.6 to 86.4 tok/s on real agent
-prompts. It is on by default because coding-agent sessions benefit more from lower TPOT during active work
-than from the ~60 s RunAI cold-start win.
+prompts. It is on by default **for the FP8 single-user path**, where lower TPOT during active work matters more
+than the ~60 s RunAI cold-start win. **Note the concurrency crossover:** MTP's benefit shrinks as the batch fills
+and reverses under real multi-user load — [§7](#7-nvfp4-weights-enable_nvfp4--the-multi-user-default) shows it
+*lowers* throughput at C=16–32, which is why the NVFP4 multi-user default turns MTP off.
 
 `num_speculative_tokens` sweep on real session replay, concurrency 8, 60 s, MTP + fp8 KV + CUDA graphs,
 `max_model_len=81920`:
@@ -153,9 +157,10 @@ The checkpoint **does carry the MTP drafter** (`config.json`: `mtp_num_hidden_la
 so NVFP4+MTP runs — it just isn't the multi-user default (see below).
 
 Measured 2026-07-23 on 1× RTX PRO 6000 (`g7e.4xlarge`), **vLLM 0.23.0** (`ray-llm:2.56.1`), fp8 KV + CUDA graphs.
-Two harnesses: a single-stream decode microbench (fixed prompt, 256 out tok — the FP8-no-MTP row reproduces
-`results_rtx_base_graph.json` ~46 tok/s, calibrating it) and the fair multi-user replay
-([`ds_bench_agent_fair.py`](../../data/benchmarks/ds_bench_agent_fair.py), 48 users, shared 7K prefix, warmed).
+Two harnesses (the `ds_bench_agent*` / results JSON live in the build workspace, not this repo — see [TODO](#todo)):
+a single-stream decode microbench (fixed prompt, 256 out tok — the FP8-no-MTP row reproduces the ~46 tok/s in
+`results_rtx_base_graph.json`, calibrating it) and the fair multi-user replay (`ds_bench_agent_fair.py` on
+`sessions_fair.jsonl`, 48 users, shared 7K prefix, warmed).
 
 **Single-stream decode (one user / low concurrency):**
 

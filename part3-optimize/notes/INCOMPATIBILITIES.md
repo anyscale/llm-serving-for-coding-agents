@@ -74,18 +74,22 @@ multi-user win comes from lower weight-memory bandwidth, not native FP4 math.
 
 ## What Composes
 
-This set works together and is enabled in
+The multi-user default (`service-nvfp4.yaml`) enables this set in
 [`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py):
 
-- torch.compile cache
+- NVFP4 weights (text-only)
+- NVFP4 torch.compile cache
 - FP8 KV cache
 - CUDA graphs
-- MTP speculative decoding (`qwen3_next_mtp`)
 - autoscale
 - direct streaming
 - tool calling (`qwen3_coder`)
 - reasoning parser (`qwen3`)
 
-The deliberate opt-ins are `ENABLE_FAST_MODEL_LOADING` and `ENABLE_PREFIX_ROUTING`. Fast loading is useful
-when cold-start time matters more than decode speed; prefix routing depends on traffic shape. See
-[`BENCHMARKS.md`](BENCHMARKS.md) for the spec-decode numbers and the prefix-routing guidance.
+MTP speculative decoding (`qwen3_next_mtp`) composes with all of the above (FP8+MTP *and* NVFP4+MTP both work),
+but it is **off in the multi-user default** because it hurts throughput under load (`BENCHMARKS.md` §5/§7). It is
+the single-user latency choice (`ENABLE_SPEC_DECODE=1`).
+
+The deliberate knobs are `ENABLE_NVFP4` (weights), `ENABLE_SPEC_DECODE` (MTP on/off), `ENABLE_FAST_MODEL_LOADING`
+(cold-start), and `ENABLE_PREFIX_ROUTING` (traffic-shape-dependent). See [`BENCHMARKS.md`](BENCHMARKS.md) for the
+numbers.

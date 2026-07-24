@@ -9,8 +9,9 @@ unmeasured default is autoscale `target_ongoing_requests`, which is intentionall
 cost-reduction case, including savings vs commercial seats and token-metered API billing, see
 [`notes/COST-ESTIMATE.md`](notes/COST-ESTIMATE.md).
 
-The Part 3 image upgrades the base image's vLLM 0.22.0 to 0.23.0 for compatibility with Claude Code's
-current `/v1/messages` schema. The benchmark and compile-cache results remain measured on vLLM 0.22.0.
+The Part 3 images upgrade the base image's vLLM 0.22.0 to 0.23.0 for compatibility with Claude Code's
+current `/v1/messages` schema. The FP8 knob results (BENCHMARKS §1–6) were measured on vLLM 0.22.0; the NVFP4
+results (§7) and its compile cache are on vLLM 0.23.0 / `ray-llm:2.56.1` (cu13).
 
 ## What Changes
 
