@@ -25,7 +25,9 @@ current `/v1/messages` schema. The benchmark and compile-cache results remain me
 
 Why RTX PRO 6000 + FP8? FP8 weights plus an FP8 256K KV cache fit comfortably on the 96 GB card, with about
 6.5× concurrency at full context and better quality than 4-bit. (Note: `nvfp4` KV cache is not usable on this
-GPU — its FP4 attention kernel is datacenter-Blackwell-only and crashes on SM120; use `fp8`.)
+GPU — its FP4 attention kernel is datacenter-Blackwell-only and crashes on SM120; use `fp8`.) For the full
+picture of what NVFP4 can and can't do on this GPU — weights vs KV cache — see
+[`notes/NVFP4-CONSTRAINTS.md`](notes/NVFP4-CONSTRAINTS.md).
 
 ## Control Panel
 
