@@ -71,10 +71,9 @@ Point Claude Code, Codex, or Cursor at the served model via
 
 ### 3. (Optional) Deploy the optimized service
 
-Part 1 already runs on a single **RTX PRO 6000 96 GB** (`g7e.4xlarge`, TP=1) — but naively (bf16 KV, 128K
-context, single replica, no compile cache or speculative decoding). Part 3 keeps the same GPU and adds the
-optimizations on top: FP8 weights, FP8 KV cache, full 256K context, MTP speculative decoding, and autoscale
-1→4:
+Part 1 already runs on the same single **RTX PRO 6000 96 GB** (`g7e.4xlarge`, TP=1), but highly
+un-optimized. Part 3 keeps the same GPU and adds the optimizations on top: FP8 weights, FP8 KV cache, full
+256K context, MTP speculative decoding, and autoscale 1→4:
 
 ```bash
 cd ../part3-optimize
