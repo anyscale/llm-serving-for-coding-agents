@@ -1,0 +1,28 @@
+# service-nvfp4-highconc.yaml — NVFP4 weights, MTP OFF: best for HIGH CONCURRENCY / many users.
+#
+# The default (service-nvfp4.yaml) keeps MTP on for single-stream latency, but MTP's draft/verify overhead
+# LOWERS aggregate throughput once the GPU is saturated (notes/BENCHMARKS.md §7: NVFP4 no-MTP does +48% out
+# tok/s and ~half the TPOT vs NVFP4+MTP at C=16). This variant turns MTP off for that regime — and, as a
+# bonus, NVFP4 without MTP matches the prebuilt compile cache, so replicas scale up fast (no cold compile).
+#
+# (Alternative to hard-off: vLLM dynamic speculative decoding auto-disables SD under load —
+#  https://docs.vllm.ai/en/stable/features/speculative_decoding/dynamic_speculative_decoding/ — tested with
+#  Eagle/Eagle-3/DFlash; qwen3_next_mtp may or may not work out of the box.)
+#
+# Deploy from the part3-optimize/ directory:
+#   anyscale service deploy -f service-nvfp4-highconc.yaml --working-dir .
+name: qwen3-6-27b-nvfp4-highconc-rtxpro6000
+containerfile: Containerfile.nvfp4
+env_vars:
+  RAY_SERVE_ENABLE_HA_PROXY: "1"
+  RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+  ENABLE_NVFP4_WEIGHT: "1"
+  ENABLE_SPEC_DECODE: "0"   # MTP off — higher multi-user throughput + uses the prebuilt NVFP4 compile cache
+compute_config:
+  worker_nodes:
+    - instance_type: g7e.4xlarge
+      min_nodes: 1
+      max_nodes: 4
+working_dir: .
+applications:
+  - import_path: serve_qwen3_6_27b_optimized:app

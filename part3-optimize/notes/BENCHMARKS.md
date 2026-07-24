@@ -12,7 +12,7 @@ production 256K-cap figures as un-benchmarked.
 
 ## Summary
 
-**The default deployment is NVFP4 without MTP** (knob 7, [§7](#7-nvfp4-weights-enable_nvfp4--the-multi-user-default)) — it wins the multi-user workload this service targets. The rows below are the per-knob effects on the FP8 baseline (now the single-user alternative); §7 has the NVFP4-vs-FP8 and MTP-vs-no-MTP comparison that sets the default.
+**The default deployment is NVFP4 weights + MTP** (knobs 7 + 5, [§7](#7-nvfp4-weights-enable_nvfp4_weight--the-default)). NVFP4 weights win in both regimes; MTP is on by default for single-stream speed but should be turned off — or auto-managed via dynamic speculative decoding — for high concurrency, where it lowers throughput (see §7). The rows below are the per-knob effects; §7 has the full NVFP4-vs-FP8 and MTP-vs-no-MTP matrix.
 
 | # | Knob | Off | On | Result | Default |
 |---|---|---|---|---|---|
@@ -20,12 +20,14 @@ production 256K-cap figures as un-benchmarked.
 | 2 | `ENABLE_COMPILE_CACHE` | Recompile, 74.5 s | Prebuilt cache, 8.8 s | 8.5× faster compile | On |
 | 3 | `ENABLE_FP8_KV_CACHE` | bf16 KV, ~3.3× concurrency at 256K | fp8 KV, full 256K | 6.53× concurrency | On |
 | 4 | `ENABLE_CUDA_GRAPHS` | Eager, 15.9 tok/s | Graphs, 45.6 tok/s | 2.87× decode | On |
-| 5 | `ENABLE_SPEC_DECODE` | Base, 45.6 tok/s | MTP, 86.4 tok/s | 1.89× single-stream decode | On (FP8) / off (NVFP4) |
-| 7 | `ENABLE_NVFP4` | FP8 weights | NVFP4 4-bit weights | +53% multi-user out tok/s (§7) | On (multi-user default) |
+| 5 | `ENABLE_SPEC_DECODE` | Base, 45.6 tok/s | MTP, 86.4 tok/s | 1.89× single-stream; −32% multi-user (§7) | On (turn off for high-conc) |
+| 7 | `ENABLE_NVFP4_WEIGHT` | FP8 weights | NVFP4 4-bit weights | +53% multi-user out tok/s (§7) | On (default) |
 
-MTP (spec decode) is the biggest single-stream lever, but it **hurts multi-user throughput** (draft/verify
-overhead once the batch saturates the GPU — see §7), so it is on for the FP8 single-user path and **off for the
-NVFP4 multi-user default**; set `ENABLE_SPEC_DECODE=1` for the single-user NVFP4+MTP config. Fast model loading is
+MTP (spec decode) is the biggest single-stream lever, but it **lowers multi-user throughput** (draft/verify
+overhead once the batch saturates the GPU — see §7), independent of weight format. It is **on by default**; for
+high concurrency turn it off (`ENABLE_SPEC_DECODE=0`, `service-nvfp4-highconc.yaml`) or use
+[dynamic speculative decoding](https://docs.vllm.ai/en/stable/features/speculative_decoding/dynamic_speculative_decoding/),
+which auto-disables SD under load. Fast model loading is
 an opt-in because RunAI Streamer and MTP cannot coexist on vLLM 0.22.0
 ([vllm#42060](https://github.com/vllm-project/vllm/issues/42060)); NVFP4 loads from HF regardless. Prefix routing
 is off by default because the single-user replay data does not need replica affinity; see
@@ -101,7 +103,7 @@ Verdict: keep on. This is the largest free speedup; turn it off only for debuggi
 [MTP (Multi-Token Prediction)](https://docs.vllm.ai/en/stable/features/speculative_decoding/mtp/) (`qwen3_next_mtp`) is coherent on Blackwell and improves decode from 45.6 to 86.4 tok/s on real agent
 prompts. It is on by default **for the FP8 single-user path**, where lower TPOT during active work matters more
 than the ~60 s RunAI cold-start win. **Note the concurrency crossover:** MTP's benefit shrinks as the batch fills
-and reverses under real multi-user load — [§7](#7-nvfp4-weights-enable_nvfp4--the-multi-user-default) shows it
+and reverses under real multi-user load — [§7](#7-nvfp4-weights-enable_nvfp4_weight--the-default) shows it
 *lowers* throughput at C=16–32, which is why the NVFP4 multi-user default turns MTP off.
 
 `num_speculative_tokens` sweep on real session replay, concurrency 8, 60 s, MTP + fp8 KV + CUDA graphs,
@@ -142,7 +144,7 @@ Under direct streaming, the stock router hangs on ray-llm 2.56. If this knob is 
 `DirectStreamingPrefixCacheRouter` until [ray#64328](https://github.com/ray-project/ray/pull/64328) lands in
 ray-llm 2.57.
 
-## 7. NVFP4 Weights (`ENABLE_NVFP4`) — the multi-user default
+## 7. NVFP4 Weights (`ENABLE_NVFP4_WEIGHT`) — the default
 
 Serve the 4-bit NVFP4 checkpoint ([`nvidia/Qwen3.6-27B-NVFP4`](https://huggingface.co/nvidia/Qwen3.6-27B-NVFP4))
 instead of FP8. This is a **weight** format (distinct from the `nvfp4` *KV-cache* dtype in §3, which crashes on
@@ -154,7 +156,7 @@ weight-only dequant path (log: `marlin.py: Your GPU does not have native support
 here is memory-bandwidth per token, not native FP4 math.
 
 The checkpoint **does carry the MTP drafter** (`config.json`: `mtp_num_hidden_layers=1`, quant `ignore: [mtp*]`),
-so NVFP4+MTP runs — it just isn't the multi-user default (see below).
+so NVFP4+MTP runs and is the shipped default; for high concurrency turn MTP off (see the verdict).
 
 Measured 2026-07-23 on 1× RTX PRO 6000 (`g7e.4xlarge`), **vLLM 0.23.0** (`ray-llm:2.56.1`), fp8 KV + CUDA graphs.
 Two harnesses (the `ds_bench_agent*` / results JSON live in the build workspace, not this repo — see [TODO](#todo)):
@@ -185,12 +187,14 @@ FP8+MTP). Under multi-user load the batch already saturates the GPU, so MTP's dr
 cost: adding MTP to NVFP4 *drops* C=16 throughput 244→165 and nearly doubles TPOT. FP8+MTP shows the same MTP
 drag (160 @C16). So **MTP is the lever that flips with concurrency**, independent of weight format.
 
-**Verdict:**
-- **Multi-user (this service's default): NVFP4 without MTP** — +53% out tok/s and ~half the TTFT/TPOT vs FP8+MTP
-  at C=16. Shipped as [`service-nvfp4.yaml`](../service-nvfp4.yaml) with a prebuilt compile cache (fast scale-up).
-- **Single-user / latency: NVFP4 + MTP** — 121 tok/s single-stream, the fastest config; set `ENABLE_SPEC_DECODE=1`
-  ([`service-nvfp4-mtp.yaml`](../service-nvfp4-mtp.yaml)). Cold-compiles (its graph differs from the cached no-MTP one).
-- FP8 + MTP remains the single-user alternative on the stock `ray-llm:2.56.0` image (no cu13 requirement).
+**Verdict — NVFP4 weights always; MTP is the concurrency-dependent knob:**
+- **Default: NVFP4 + MTP** ([`service-nvfp4.yaml`](../service-nvfp4.yaml)) — fastest single-stream (121 tok/s) and
+  strong at low/moderate load. NVFP4+MTP is a distinct compile graph with no prebuilt cache, so it cold-compiles.
+- **High concurrency: NVFP4, MTP off** ([`service-nvfp4-highconc.yaml`](../service-nvfp4-highconc.yaml)) — +48% out
+  tok/s and ~half the TPOT vs NVFP4+MTP at C=16, and it matches the prebuilt compile cache (fast scale-up). Or keep
+  MTP on and let [dynamic speculative decoding](https://docs.vllm.ai/en/stable/features/speculative_decoding/dynamic_speculative_decoding/)
+  disable it under load automatically (tested with Eagle/Eagle-3/DFlash; `qwen3_next_mtp` may or may not work OOTB).
+- FP8 + MTP remains an alternative on the stock `ray-llm:2.56.0` image (no cu13; supports image input).
 
 **Correctness:** all configs produce coherent output + structured `qwen3_coder` tool calls; no NVFP4 garbling.
 
