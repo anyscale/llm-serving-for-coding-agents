@@ -17,15 +17,21 @@ current `/v1/messages` schema. The benchmark and compile-cache results remain me
 | Area | [Naive](../part1-deploy-naive/serve_qwen3_6_27b_naive.py) | [Optimized](serve_qwen3_6_27b_optimized.py) |
 |---|---|---|
 | GPU | 4× L4, TP=4 | 1× RTX PRO 6000 96 GB, TP=1 (`g7e.4xlarge`) |
-| Context | FP8, 128K | FP8, full 256K |
+| Weights | FP8 | **NVFP4** default (multi-user); FP8 for single-user / image input — see the "why" note below |
+| Context | FP8 KV, 128K | FP8 KV, full 256K |
 | Model load | S3 download, ~85 s | HF download, ~85 s by default; optional RunAI Streamer S3→GPU, ~25 s |
 | Compile | Recompile every cold start, ~74 s | S3 torch.compile cache, ~9 s |
-| Decode | CUDA graphs only | CUDA graphs + MTP speculative decoding, ~1.9× faster decode |
+| Decode | CUDA graphs only | CUDA graphs; NVFP4 4-bit weights for multi-user throughput (MTP is a single-user opt-in) |
 | Scaling | Single replica | Autoscale 1→4, round-robin via [`service-always-on.yaml`](service-always-on.yaml) (or 0→4 via [`service-work-hours.yaml`](service-work-hours.yaml)) |
 
-Why RTX PRO 6000 + FP8? FP8 weights plus an FP8 256K KV cache fit comfortably on the 96 GB card, with about
-6.5× concurrency at full context and better quality than 4-bit. (Note: `nvfp4` KV cache is not usable on this
-GPU — its FP4 attention kernel is datacenter-Blackwell-only and crashes on SM120; use `fp8`.)
+Why NVFP4 weights (default) + FP8 KV? This is a **multi-user** service, and on the fair multi-turn replay 4-bit
+NVFP4 weights beat FP8 — **+53% aggregate out tok/s and ~half the TTFT/TPOT at C=16** ([`notes/BENCHMARKS.md`](notes/BENCHMARKS.md)
+§7) — while freeing ~5 GB (≈22 GB vs 27 GB) for KV headroom; the FP8 256K KV cache still fits the full context.
+NVFP4 ships via [`service-nvfp4.yaml`](service-nvfp4.yaml) on the `ray-llm:2.56.1` (cu13) image. MTP speculative
+decoding is **off** under NVFP4 because it hurts multi-user throughput; for a single-user endpoint, NVFP4+MTP
+([`service-nvfp4-mtp.yaml`](service-nvfp4-mtp.yaml)) is the fastest single-stream config (121 tok/s), and FP8+MTP
+remains a no-cu13 alternative. (Separately, the `nvfp4` *KV-cache* dtype is NOT usable here — its FP4 attention
+kernel is datacenter-Blackwell-only and crashes on SM120; use `fp8` KV.)
 
 ## Control Panel
 
@@ -37,8 +43,9 @@ GPU — its FP4 attention kernel is datacenter-Blackwell-only and crashes on SM1
 | `ENABLE_COMPILE_CACHE` | `True` | Restores prebuilt torch.compile caches, cutting compile from ~74.5 s to ~8.8 s. |
 | `ENABLE_FP8_KV_CACHE` | `True` | Halves KV memory so the full 256K context fits. |
 | `ENABLE_CUDA_GRAPHS` | `True` | Biggest free win: ~2.87× decode on Blackwell. |
-| `ENABLE_SPEC_DECODE` | `True` | MTP gives ~1.9× decode on the coding-agent replay. This is the default because agent work benefits more from lower TPOT than from a faster cold weight load. |
+| `ENABLE_SPEC_DECODE` | `True` (FP8) / `False` (NVFP4) | MTP boosts single-stream decode but *hurts* multi-user throughput. On for FP8; the NVFP4 default flips it off (set `ENABLE_SPEC_DECODE=1` for the single-user NVFP4+MTP config). See `notes/BENCHMARKS.md` §7. |
 | `ENABLE_PREFIX_ROUTING` | `False` | Optional for diverse multi-user prefixes. The single-user replay data here shares the same prompts, skills, and harness context, so round-robin is the simpler default. |
+| `ENABLE_NVFP4` | `True` (multi-user default, via `service-nvfp4.yaml`) | 4-bit NVFP4 weights — wins the multi-user fair replay (`notes/BENCHMARKS.md` §7). Needs the `ray-llm:2.56.1`/cu13 image (`Containerfile.nvfp4`); **text-only** (multimodal path crashes on NVFP4/SM120, so use FP8 for image input); runs the Marlin (non-native) FP4 path. Env-settable. |
 
 Direct streaming is always on because Part 2 connects Claude Code (`/v1/messages`), Codex (`/v1/responses`), and Cursor (`/v1/chat/completions`) to these native endpoints.
 It is enabled in the service YAMLs so the Serve controller sees it at startup. If you enable prefix routing,
@@ -50,21 +57,29 @@ pin the `g7e` node instead.
 
 ## Files
 
-- `serve_qwen3_6_27b_optimized.py` — optimized app and toggle panel.
-- `service-always-on.yaml`, `service-work-hours.yaml`, and `schedule-work-hours-warmup.yaml` — Anyscale entry points.
+- `serve_qwen3_6_27b_optimized.py` — optimized app and toggle panel (FP8 and NVFP4).
+- `service-nvfp4.yaml` — **default multi-user deployment** (NVFP4). `service-nvfp4-mtp.yaml` — single-user NVFP4+MTP.
+- `service-always-on.yaml`, `service-work-hours.yaml`, and `schedule-work-hours-warmup.yaml` — FP8+MTP entry points.
 - `warmup.sh` — weekday morning warmup helper for work-hours mode.
 - `notes/` — benchmark data, cost estimates, and compatibility notes.
 - `direct_streaming_prefix_router.py` — prefix-routing adapter for direct streaming, only used if you opt in.
-- `Containerfile` — `ray-llm:2.56.0` with vLLM 0.23.0 and `runai-model-streamer`.
+- `Containerfile.nvfp4` — `ray-llm:2.56.1` (cu13) image for the NVFP4 services.
+- `Containerfile` — `ray-llm:2.56.0` with vLLM 0.23.0 and `runai-model-streamer` (FP8 services).
 
 ## Deploy
 
 ```bash
 cd part3-optimize
-anyscale service deploy -f service-always-on.yaml --working-dir .
+# Default: NVFP4 weights, best for multi-user (builds the ray-llm 2.56.1 / cu13 image).
+anyscale service deploy -f service-nvfp4.yaml --working-dir .
+
+# Single-user / lowest latency (NVFP4 + MTP, 121 tok/s single-stream):
+#   anyscale service deploy -f service-nvfp4-mtp.yaml --working-dir .
+# FP8 + MTP alternative (no cu13 requirement, supports image input):
+#   anyscale service deploy -f service-always-on.yaml --working-dir .
 ```
 
-The default uses the Hugging Face loader so MTP speculative decoding can stay on. If your priority is
+The FP8 services use the Hugging Face loader so MTP speculative decoding can stay on. If your priority is
 cold-start time instead of decode speed, use the commented fast-loading recipe in
 [`serve_qwen3_6_27b_optimized.py`](serve_qwen3_6_27b_optimized.py): set `ENABLE_SPEC_DECODE=False` and
 `ENABLE_FAST_MODEL_LOADING=True`, upload the FP8 weights once (`hf download Qwen/Qwen3.6-27B-FP8`, then

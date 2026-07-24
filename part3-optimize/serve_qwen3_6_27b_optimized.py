@@ -5,9 +5,13 @@
 # The defaults are the validated coding-agent setup: FP8 weights + FP8 KV + full 256K context (6.53×
 # concurrency), CUDA graphs, MTP speculative decoding, and the prebuilt compile cache. Fast S3 model
 # loading is kept below as an opt-in cold-start alternative, but it is not the default because it conflicts
-# with MTP on vLLM 0.22.0.
+# with MTP on vLLM 0.22.0. ENABLE_NVFP4 (knob 7) switches to 4-bit NVFP4 weights — the DEFAULT for the
+# shipped multi-user service (it wins the multi-user benchmark; needs the ray-llm 2.56.1 image). This FP8
+# path stays as the single-user / low-concurrency alternative.
 # Full measurements + the "knobs that can't be combined" matrix:
 # notes/BENCHMARKS.md / notes/INCOMPATIBILITIES.md.
+
+import os
 
 # ════════════════════════════════ OPTIMIZATION CONTROL PANEL ════════════════════════════════
 # Flip each ON/OFF. Mutually-exclusive combos are flagged with ⚠ (and enforced by a guard below).
@@ -33,11 +37,11 @@ ENABLE_FP8_KV_CACHE = True
 #     OFF -> enforce_eager=True (only to debug, or to fit spec-decode on a small GPU; see notes/).
 ENABLE_CUDA_GRAPHS = True
 
-# (5) SPECULATIVE DECODING (MTP) — default ON for coding-agent traffic.
-#     ~1.9x decode on RTX PRO 6000, coherent output (the #40880 degenerate-output bug does NOT occur on
-#     Blackwell). ⚠ Needs the HF loader, so it turns FAST MODEL LOADING off (vllm#42060): you trade the
-#     fast S3 cold-start for faster multi-token generation during agent work. See notes/BENCHMARKS.md.
-ENABLE_SPEC_DECODE = True
+# (5) SPECULATIVE DECODING (MTP) — env-settable. Default ON for FP8 single-stream, but the NVFP4 guard
+#     below flips the default OFF for NVFP4 (MTP HURTS multi-user throughput — draft/verify overhead under
+#     load; notes/BENCHMARKS.md §7). Set ENABLE_SPEC_DECODE=1 to force it on (e.g. single-user NVFP4+MTP,
+#     121 tok/s single-stream). ⚠ Needs the HF loader, so it turns FAST MODEL LOADING off (vllm#42060).
+ENABLE_SPEC_DECODE = os.environ.get("ENABLE_SPEC_DECODE", "1") == "1"
 
 # (6) PREFIX-AWARE ROUTING — send a session's turns to the replica that cached its prefix. Keep OFF for the
 #     single-user coding-agent trace used here: most requests share the same system prompts, skills, and
@@ -46,12 +50,40 @@ ENABLE_SPEC_DECODE = True
 #     so affinity does not overload one replica. Only matters with max_replicas > 1.
 ENABLE_PREFIX_ROUTING = False
 
+# (7) NVFP4 WEIGHTS — serve the 4-bit NVFP4 checkpoint (nvidia/Qwen3.6-27B-NVFP4) instead of FP8. A WEIGHT
+#     format, not a KV-cache dtype (nvfp4 KV crashes on SM120 — see notes). ~22 GB weights vs FP8 ~27 GB
+#     (more KV headroom). This is the DEFAULT for the shipped multi-user service (service-nvfp4.yaml):
+#     measured (notes/BENCHMARKS.md §7) it WINS the multi-user fair replay (+53% out tok/s, ~half TTFT/TPOT
+#     @C16 vs FP8+MTP). Note it runs the Marlin (non-native) FP4 path on SM120 — vLLM has no dense-NVFP4
+#     SM120 kernel yet (vllm#31085 / #33417 cover MoE only). The checkpoint DOES carry an MTP drafter, so
+#     NVFP4 defaults to NO MTP here (MTP hurts multi-user) but you can set ENABLE_SPEC_DECODE=1 for the
+#     single-user NVFP4+MTP latency config (121 tok/s single-stream, the fastest of all). ⚠ REQUIRES the
+#     ray-llm 2.56.1 (cu13) image (`Containerfile.nvfp4`). Deploy via `service-nvfp4.yaml`, or hardcode True.
+ENABLE_NVFP4 = os.environ.get("ENABLE_NVFP4", "0") == "1"
+
 # DIRECT STREAMING is REQUIRED for this demo (Parts 1 & 2 connect Claude Code / Codex / Cursor straight to
 # native /v1/messages + /v1/responses), so it is NOT a toggle — it's always on. It's enabled at the SERVICE
 # level in the service YAML `env_vars` (RAY_SERVE_ENABLE_HA_PROXY + RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING):
 # the Ray Serve *controller* reads those at startup, while a runtime_env reaches only replicas (the deploy
 # fails "ingress_request_router requires HAProxy" otherwise). Keep those two vars in the YAML — don't remove them.
 # ═════════════════════════════════════════════════════════════════════════════════════════════
+
+# NVFP4 handling: the RunAI S3 mirror is FP8, so NVFP4 always loads from HF (fast-loading off). The nvidia
+# NVFP4 checkpoint DOES include the MTP drafter, but MTP hurts multi-user throughput (~-32% @C16,
+# notes/BENCHMARKS.md §7), so this multi-user service defaults to NVFP4 WITHOUT MTP: spec decode defaults
+# off for NVFP4 unless explicitly set (ENABLE_SPEC_DECODE=1 -> single-user NVFP4+MTP, 121 tok/s single-stream).
+# fp8 KV is kept (nvfp4 KV crashes on SM120).
+if ENABLE_NVFP4:
+    ENABLE_FAST_MODEL_LOADING = False
+    if "ENABLE_SPEC_DECODE" not in os.environ:
+        ENABLE_SPEC_DECODE = False   # multi-user default: NVFP4 without MTP
+    if ENABLE_SPEC_DECODE:
+        # The prebuilt NVFP4 compile cache is keyed to the no-MTP graph; NVFP4+MTP changes it -> cold compile.
+        ENABLE_COMPILE_CACHE = False
+        print("[config] NVFP4 + MTP (single-user latency config) -> compile cache off (prebuilt cache is the "
+              "no-MTP graph); cold compile expected.")
+    else:
+        print("[config] NVFP4 without MTP (multi-user default) -> using the prebuilt NVFP4 compile cache.")
 
 # Resolve the one hard conflict automatically: MTP needs the HF loader, so turning spec decode on makes
 # fast loading turn itself off (vllm#42060). Flipping ENABLE_SPEC_DECODE on "just works" — no second edit.
@@ -60,14 +92,13 @@ if ENABLE_SPEC_DECODE and ENABLE_FAST_MODEL_LOADING:
           "(RunAI Streamer conflicts with MTP, vllm#42060); using the HF loader instead.")
     ENABLE_FAST_MODEL_LOADING = False
 
-import os
-
 from ray.serve.llm import LLMConfig, build_openai_app
 
 # ── Fixed for this deployment ────────────────────────────────────────────────
-MODEL_ID   = "qwen3.6-27b"
-HF_SOURCE  = "Qwen/Qwen3.6-27B-FP8"                                          # plain HF download
-S3_WEIGHTS = "s3://llm-guide/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/"    # for RunAI Streamer
+MODEL_ID     = "qwen3.6-27b"
+HF_SOURCE    = "Qwen/Qwen3.6-27B-FP8"                                        # plain HF download (default)
+NVFP4_SOURCE = "nvidia/Qwen3.6-27B-NVFP4"                                    # 4-bit NVFP4 weights (ENABLE_NVFP4)
+S3_WEIGHTS   = "s3://llm-guide/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/"  # for RunAI Streamer
 
 # Compile-cache locations (used only when ENABLE_COMPILE_CACHE). The S3 PREFIXES ENCODE the exact stack a
 # torch.compile cache is keyed to (vLLM version + GPU arch + flags); these were rebuilt + validated
@@ -77,6 +108,13 @@ COMPILE_CACHE_S3      = "s3://llm-guide/data/ray-serve-llm/compiled-cache/qwen3.
 COMPILE_CACHE_DIR     = "/home/ray/.cache/vllm/torch_compile_cache/qwen3.6-27b"
 COMPILE_CACHE_AOT_S3  = "s3://llm-guide/data/ray-serve-llm/compiled-cache/qwen3.6-27b-aot/vllm0.22.0-rtxpro6000-sm120-fp8-tp1-256k/"
 COMPILE_CACHE_AOT_DIR = "/home/ray/.cache/vllm/torch_compile_cache/torch_aot_compile/d2d5f6429cf68f56db205af1548136d88bf1d13247d0d6a24209dbe6420ebc9b"
+
+# NVFP4 has its OWN compile cache (built + uploaded 2026-07-23; keyed to vLLM 0.23.0 / RTX PRO 6000 (SM120) /
+# NVFP4 weights + fp8 KV / TP=1 / 256K). Used when ENABLE_NVFP4. Rebuild + new prefix if the image/GPU/flags change.
+COMPILE_CACHE_S3_NVFP4      = "s3://llm-guide/data/ray-serve-llm/compiled-cache/qwen3.6-27b/vllm0.23.0-rtxpro6000-sm120-nvfp4-tp1-256k/"
+COMPILE_CACHE_DIR_NVFP4     = "/home/ray/.cache/vllm/torch_compile_cache/qwen3.6-27b-nvfp4"
+COMPILE_CACHE_AOT_S3_NVFP4  = "s3://llm-guide/data/ray-serve-llm/compiled-cache/qwen3.6-27b-aot/vllm0.23.0-rtxpro6000-sm120-nvfp4-tp1-256k/"
+COMPILE_CACHE_AOT_DIR_NVFP4 = "/home/ray/.cache/vllm/torch_compile_cache/torch_aot_compile/d2e025bea80d425afc71cd5f1be1612d659feee327c72fac7fd472a90278649f"
 
 # ── Build the engine config from the toggles ─────────────────────────────────
 engine_kwargs = dict(
@@ -106,6 +144,15 @@ if ENABLE_FAST_MODEL_LOADING:
 else:
     model_source = HF_SOURCE
 
+# (7) NVFP4 weights set the source (fast-loading already forced off above). The spec block below leaves
+#     this untouched for NVFP4 (NVFP4+MTP keeps the NVFP4 checkpoint, which carries its own MTP drafter).
+#     NVFP4 is TEXT-ONLY: the multimodal path crashes on this NVFP4 checkpoint / SM120 ("'NoneType' object
+#     has no attribute 'size'"), so force image/video limits to 0. Coding-agent traffic is text; use FP8 if
+#     you need image input.
+if ENABLE_NVFP4:
+    model_source = NVFP4_SOURCE
+    engine_kwargs["limit_mm_per_prompt"] = {"image": 0, "video": 0}
+
 # (3) FP8 KV cache
 if ENABLE_FP8_KV_CACHE:
     engine_kwargs["kv_cache_dtype"] = "fp8"
@@ -116,21 +163,29 @@ if not ENABLE_CUDA_GRAPHS:
 
 # (5) Speculative decoding (MTP). The guard above guarantees the HF loader is in use here (#42060).
 if ENABLE_SPEC_DECODE:
-    model_source = HF_SOURCE
+    if not ENABLE_NVFP4:
+        model_source = HF_SOURCE   # FP8+MTP: undo any RunAI load_format; NVFP4 keeps its own checkpoint
     # num_speculative_tokens=3 is the measured sweet spot on the real agent replay: +24% out tok/s,
     # +44% turns/s, -19% TPOT vs 2. 4 REGRESSES below 2 (draft/verify overhead > acceptance gain).
     # See notes/BENCHMARKS.md knob 5. (MTP served the traces' ~73K-tok prompts with 0 errors on vLLM 0.22.)
     engine_kwargs["speculative_config"] = {"method": "qwen3_next_mtp", "num_speculative_tokens": 3}
 
 # (2) Compile cache: point vLLM at the cache_dir + download both caches from S3 before engine init.
+# NVFP4 uses its own prefixes (different vLLM version + quant); FP8 uses the original 2026-06-30 set.
 callback_config = None
 if ENABLE_COMPILE_CACHE:
-    engine_kwargs["compilation_config"] = {"cache_dir": COMPILE_CACHE_DIR}
+    if ENABLE_NVFP4:
+        cc_s3, cc_dir, cc_aot_s3, cc_aot_dir = (
+            COMPILE_CACHE_S3_NVFP4, COMPILE_CACHE_DIR_NVFP4, COMPILE_CACHE_AOT_S3_NVFP4, COMPILE_CACHE_AOT_DIR_NVFP4)
+    else:
+        cc_s3, cc_dir, cc_aot_s3, cc_aot_dir = (
+            COMPILE_CACHE_S3, COMPILE_CACHE_DIR, COMPILE_CACHE_AOT_S3, COMPILE_CACHE_AOT_DIR)
+    engine_kwargs["compilation_config"] = {"cache_dir": cc_dir}
     callback_config = {
         "callback_class": "ray.llm._internal.common.callbacks.cloud_downloader.CloudDownloader",
         "callback_kwargs": {"paths": [
-            (COMPILE_CACHE_S3, COMPILE_CACHE_DIR),          # inductor kernels -> compilation_config.cache_dir
-            (COMPILE_CACHE_AOT_S3, COMPILE_CACHE_AOT_DIR),  # AOT compiled fn  -> torch_aot_compile/<hash>
+            (cc_s3, cc_dir),          # inductor kernels -> compilation_config.cache_dir
+            (cc_aot_s3, cc_aot_dir),  # AOT compiled fn  -> torch_aot_compile/<hash>
         ]},
     }
 

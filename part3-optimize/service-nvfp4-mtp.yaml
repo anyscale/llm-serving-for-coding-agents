@@ -1,0 +1,26 @@
+# service-nvfp4-mtp.yaml — SINGLE-USER / low-concurrency variant: NVFP4 weights + MTP.
+#
+# Fastest single-stream config measured (notes/BENCHMARKS.md §7): 121 tok/s decode, beating FP8+MTP (86).
+# At low concurrency the GPU is idle, so NVFP4's 4-bit weight bandwidth AND MTP speculative decoding both
+# help. Do NOT use this for many concurrent users — MTP's draft/verify overhead drops multi-user throughput
+# ~32% vs the no-MTP default (service-nvfp4.yaml); pick by your concurrency profile.
+#
+# Same image + shape as service-nvfp4.yaml, but ENABLE_SPEC_DECODE=1 turns MTP on. NVFP4+MTP is a different
+# torch.compile graph than the cached no-MTP one, so the first replica cold-compiles (~75 s); acceptable for
+# a single-user endpoint. Deploy from part3-optimize/:
+#   anyscale service deploy -f service-nvfp4-mtp.yaml --working-dir .
+name: qwen3-6-27b-nvfp4-mtp-rtxpro6000
+containerfile: Containerfile.nvfp4
+env_vars:
+  RAY_SERVE_ENABLE_HA_PROXY: "1"
+  RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+  ENABLE_NVFP4: "1"
+  ENABLE_SPEC_DECODE: "1"   # NVFP4 + MTP (single-user latency); overrides NVFP4's no-MTP default
+compute_config:
+  worker_nodes:
+    - instance_type: g7e.4xlarge
+      min_nodes: 1
+      max_nodes: 4
+working_dir: .
+applications:
+  - import_path: serve_qwen3_6_27b_optimized:app

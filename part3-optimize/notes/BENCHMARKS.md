@@ -138,6 +138,60 @@ Under direct streaming, the stock router hangs on ray-llm 2.56. If this knob is 
 `DirectStreamingPrefixCacheRouter` until [ray#64328](https://github.com/ray-project/ray/pull/64328) lands in
 ray-llm 2.57.
 
+## 7. NVFP4 Weights (`ENABLE_NVFP4`) — the multi-user default
+
+Serve the 4-bit NVFP4 checkpoint ([`nvidia/Qwen3.6-27B-NVFP4`](https://huggingface.co/nvidia/Qwen3.6-27B-NVFP4))
+instead of FP8. This is a **weight** format (distinct from the `nvfp4` *KV-cache* dtype in §3, which crashes on
+SM120). Requires the `ray-llm:2.56.1-py312-cu130` image ([`Containerfile.nvfp4`](../Containerfile.nvfp4)).
+NVFP4 weights are ~22 GB vs FP8 ~27 GB (more KV headroom). Note SM120 has no dense-NVFP4 kernel in vLLM yet
+([vllm#31085](https://github.com/vllm-project/vllm/issues/31085),
+[#33417](https://github.com/vllm-project/vllm/pull/33417) cover MoE only), so weights run the **Marlin**
+weight-only dequant path (log: `marlin.py: Your GPU does not have native support for FP4 computation`) — the win
+here is memory-bandwidth per token, not native FP4 math.
+
+The checkpoint **does carry the MTP drafter** (`config.json`: `mtp_num_hidden_layers=1`, quant `ignore: [mtp*]`),
+so NVFP4+MTP runs — it just isn't the multi-user default (see below).
+
+Measured 2026-07-23 on 1× RTX PRO 6000 (`g7e.4xlarge`), **vLLM 0.23.0** (`ray-llm:2.56.1`), fp8 KV + CUDA graphs.
+Two harnesses: a single-stream decode microbench (fixed prompt, 256 out tok — the FP8-no-MTP row reproduces
+`results_rtx_base_graph.json` ~46 tok/s, calibrating it) and the fair multi-user replay
+([`ds_bench_agent_fair.py`](../../data/benchmarks/ds_bench_agent_fair.py), 48 users, shared 7K prefix, warmed).
+
+**Single-stream decode (one user / low concurrency):**
+
+| Config | Decode tok/s |
+|---|---|
+| **NVFP4 + MTP** | **121** |
+| FP8 + MTP | 86 |
+| NVFP4 (no MTP) | 65 |
+| FP8 (no MTP) | 46 |
+
+**Fair multi-user throughput (aggregate out tok/s):**
+
+| Config | C=8 | C=16 | C=32 | C=16 TPOT |
+|---|---|---|---|---|
+| **NVFP4 (no MTP)** | 232 | **244** | **276** | **414 ms** |
+| NVFP4 + MTP | 205 | 165 | 237 | 793 ms |
+| FP8 + MTP | — | 160 | 269 | 946 ms |
+
+The two regimes want opposite MTP settings. At low concurrency the GPU is idle, so **both** NVFP4's 4-bit weight
+bandwidth **and** MTP's speculative decoding help → NVFP4+MTP is fastest single-stream (121 tok/s, +40% over
+FP8+MTP). Under multi-user load the batch already saturates the GPU, so MTP's draft+verify overhead becomes pure
+cost: adding MTP to NVFP4 *drops* C=16 throughput 244→165 and nearly doubles TPOT. FP8+MTP shows the same MTP
+drag (160 @C16). So **MTP is the lever that flips with concurrency**, independent of weight format.
+
+**Verdict:**
+- **Multi-user (this service's default): NVFP4 without MTP** — +53% out tok/s and ~half the TTFT/TPOT vs FP8+MTP
+  at C=16. Shipped as [`service-nvfp4.yaml`](../service-nvfp4.yaml) with a prebuilt compile cache (fast scale-up).
+- **Single-user / latency: NVFP4 + MTP** — 121 tok/s single-stream, the fastest config; set `ENABLE_SPEC_DECODE=1`
+  ([`service-nvfp4-mtp.yaml`](../service-nvfp4-mtp.yaml)). Cold-compiles (its graph differs from the cached no-MTP one).
+- FP8 + MTP remains the single-user alternative on the stock `ray-llm:2.56.0` image (no cu13 requirement).
+
+**Correctness:** all configs produce coherent output + structured `qwen3_coder` tool calls; no NVFP4 garbling.
+
+**Caveat:** the fair replay has 48 users / short windows — treat the absolute numbers as indicative and the
+*ranking* as the takeaway. Re-evaluate when native dense-NVFP4 SM120 kernels land (they'd lift NVFP4 further).
+
 ## Direct Streaming
 
 [Direct streaming](https://docs.ray.io/en/latest/serve/llm/user-guides/direct-streaming.html) exposes `/v1/messages` for Claude Code and `/v1/responses` for Codex alongside
