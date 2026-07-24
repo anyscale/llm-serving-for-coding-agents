@@ -52,20 +52,44 @@ Options:
 
 In this tutorial, direct streaming is always on. That is why prefix routing, when enabled, uses the subclass.
 
+### 3. NVFP4 Weights — the knobs it changes
+
+`ENABLE_NVFP4` (knob 7) composes with the rest of the panel, but it adjusts a few defaults (the control panel
+does this automatically):
+
+- **Base image must be `ray-llm:2.56.1-py312-cu130`** (`Containerfile.nvfp4`) — cu13 is required for the FP4
+  kernels. Keep `kv_cache_dtype="fp8"`: the `nvfp4` *KV-cache* dtype still crashes on SM120 (`BENCHMARKS.md` §3).
+- **No RunAI fast-loading.** `S3_WEIGHTS` mirrors the FP8 weights, so NVFP4 loads from the HF source.
+- **MTP defaults off, but IS available.** The nvidia NVFP4 checkpoint carries the `qwen3_next_mtp` drafter
+  (`config.json`: `mtp_num_hidden_layers=1`, quant `ignore: [mtp*]`), so NVFP4+MTP works. It is off by default
+  because MTP *hurts* multi-user throughput (`BENCHMARKS.md` §7); set `ENABLE_SPEC_DECODE=1` for the single-user
+  NVFP4+MTP latency config (fastest single-stream, 121 tok/s).
+- **Compile cache is per-graph.** NVFP4-no-MTP has its own prebuilt cache (`COMPILE_CACHE_*_NVFP4`, fast scale-up).
+  NVFP4+MTP is a different graph with no prebuilt cache → it cold-compiles (build + upload one under a new prefix
+  if you want fast scale-up there too).
+
+NVFP4 does **not** engage native FP4 tensor cores on SM120 — vLLM has no dense NVFP4 kernel for SM120 yet
+([vllm#31085](https://github.com/vllm-project/vllm/issues/31085)), so it runs the Marlin weight-only path. The
+multi-user win comes from lower weight-memory bandwidth, not native FP4 math.
+
 ## What Composes
 
-This set works together and is enabled in
+The multi-user default (`service-nvfp4.yaml`) enables this set in
 [`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py):
 
-- torch.compile cache
+- NVFP4 weights (text-only)
+- NVFP4 torch.compile cache
 - FP8 KV cache
 - CUDA graphs
-- MTP speculative decoding (`qwen3_next_mtp`)
 - autoscale
 - direct streaming
 - tool calling (`qwen3_coder`)
 - reasoning parser (`qwen3`)
 
-The deliberate opt-ins are `ENABLE_FAST_MODEL_LOADING` and `ENABLE_PREFIX_ROUTING`. Fast loading is useful
-when cold-start time matters more than decode speed; prefix routing depends on traffic shape. See
-[`BENCHMARKS.md`](BENCHMARKS.md) for the spec-decode numbers and the prefix-routing guidance.
+MTP speculative decoding (`qwen3_next_mtp`) composes with all of the above (FP8+MTP *and* NVFP4+MTP both work),
+but it is **off in the multi-user default** because it hurts throughput under load (`BENCHMARKS.md` §5/§7). It is
+the single-user latency choice (`ENABLE_SPEC_DECODE=1`).
+
+The deliberate knobs are `ENABLE_NVFP4` (weights), `ENABLE_SPEC_DECODE` (MTP on/off), `ENABLE_FAST_MODEL_LOADING`
+(cold-start), and `ENABLE_PREFIX_ROUTING` (traffic-shape-dependent). See [`BENCHMARKS.md`](BENCHMARKS.md) for the
+numbers.

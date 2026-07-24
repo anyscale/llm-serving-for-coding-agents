@@ -1,4 +1,8 @@
-# service-always-on.yaml - optimized deployment with one warm replica kept online.
+# service-always-on.yaml - FP8+MTP always-on deployment with one warm replica kept online.
+#
+# NOTE: the multi-user default is now NVFP4 (service-nvfp4.yaml) — it wins the multi-user benchmark
+# (notes/BENCHMARKS.md §7). This FP8+MTP config is the single-user / low-concurrency alternative (and the
+# one to use if you need image input or want to avoid the cu13 image).
 #
 # This is the min-replica-1 mode: no cold start for normal workday traffic, with autoscale headroom
 # for bursts. It uses the MIN_REPLICAS default of 1 in serve_qwen3_6_27b_optimized.py.

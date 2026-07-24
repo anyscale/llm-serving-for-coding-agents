@@ -1,0 +1,14 @@
+# Containerfile.nvfp4 — image for the NVFP4 weight-quant option (knob 7 / service-nvfp4.yaml).
+#
+# Differs from the default `Containerfile` in two ways:
+#   - Base bumped to ray-llm 2.56.1 (cu13 is REQUIRED for the FP4 kernels; validated 2026-07-23).
+#   - runai-model-streamer is dropped: NVFP4 forces fast-loading off (its S3 mirror holds FP8 weights),
+#     so the NVFP4 checkpoint loads via the plain Hugging Face downloader.
+#
+# For a fully immutable build, pin the digest:
+#   FROM anyscale/ray-llm@sha256:<digest>
+FROM anyscale/ray-llm:2.56.1-py312-cu130
+
+# vLLM 0.23.0 carries Claude Code's current /v1/messages schema fix (the base ships 0.22.0). SciPy
+# >=1.13 is required by this vLLM/image combination.
+RUN pip install --no-cache-dir "vllm==0.23.0" "scipy>=1.13"

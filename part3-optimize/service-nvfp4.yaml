@@ -1,0 +1,34 @@
+# service-nvfp4.yaml — DEFAULT deployment for this multi-user service (NVFP4 weights).
+#
+# Part 3 targets many concurrent coding-agent users, and on that workload NVFP4 beats the FP8+MTP setup
+# (notes/BENCHMARKS.md §7: +53% out tok/s and ~half the TTFT/TPOT at C=16 on the fair multi-user replay),
+# so it is the recommended default. Same 1× RTX PRO 6000 always-on shape as service-always-on.yaml, but:
+#   - image is built from Containerfile.nvfp4 (ray-llm 2.56.1 / cu13, required for the FP4 kernels)
+#   - ENABLE_NVFP4=1 flips serve_qwen3_6_27b_optimized.py to the NVFP4 checkpoint. MTP defaults OFF for NVFP4
+#     (MTP hurts multi-user throughput) and fast-loading is off, so it uses the prebuilt NVFP4 compile cache
+#     (fast scale-up). NVFP4 runs the Marlin (non-native) FP4 path on SM120 — the win is memory bandwidth.
+#
+# For a SINGLE-USER / low-concurrency endpoint, prefer service-nvfp4-mtp.yaml (NVFP4+MTP, 121 tok/s
+# single-stream — the fastest config), or the legacy FP8+MTP service-always-on.yaml.
+#
+# Deploy from the part3-optimize/ directory (containerfile: and working_dir: resolve against the CLI's CWD):
+#   anyscale service deploy -f service-nvfp4.yaml --working-dir .
+name: qwen3-6-27b-nvfp4-rtxpro6000-always-on
+# Builds ray-llm 2.56.1 + vLLM 0.23.0 from Containerfile.nvfp4 at deploy time.
+# Alternative: pre-build once (`anyscale image build -f Containerfile.nvfp4 -n qwen3-nvfp4 -r 2.56.1`) and
+# set image_uri instead.
+containerfile: Containerfile.nvfp4
+# Direct-streaming flags (controller-level) + ENABLE_NVFP4 so the serve app selects the NVFP4 source.
+env_vars:
+  RAY_SERVE_ENABLE_HA_PROXY: "1"
+  RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+  ENABLE_NVFP4: "1"
+compute_config:
+  worker_nodes:
+    # AWS g7e.4xlarge = 1× NVIDIA RTX PRO 6000 96GB (Blackwell SM120), 16 vCPU, 128 GiB host RAM; TP=1.
+    - instance_type: g7e.4xlarge
+      min_nodes: 1                 # always-on baseline; keeps one GPU node warm
+      max_nodes: 4                 # autoscale headroom (matches max_replicas=4)
+working_dir: .
+applications:
+  - import_path: serve_qwen3_6_27b_optimized:app
