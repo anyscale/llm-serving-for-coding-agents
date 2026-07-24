@@ -6,17 +6,11 @@
 # ── What makes it naive ─────────────────────────────────────────────────────────────
 #
 # GPU: 1× NVIDIA RTX PRO 6000 96GB (g7e.4xlarge, tensor_parallel_size=1) — the SAME shape
-#   Part 3 optimizes on. Part 1 deliberately keeps the hardware identical so the "before vs.
-#   after" in this tutorial is about the SOFTWARE optimizations alone, not a GPU swap. The FP8
-#   weights fit comfortably on this single GPU with no tensor-parallel comms.
+#   Part 3 optimizes on. Part 1 keeps the hardware identical so the "before vs. after" is about
+#   the software optimizations alone, not a GPU swap.
 #
-# What it's missing (every one of these is added in Part 3):
-#   - bf16 KV cache (the vLLM default), not FP8 KV — so 128K context here, not the full 256K.
-#   - no torch.compile cache — each fresh replica recompiles cold.
-#   - no fast S3 weight loader (RunAI Streamer) — weights download on every cold start.
-#   - no speculative decoding (MTP).
-#   - no prefix-aware routing.
-#   - single replica, no autoscaling.
+# It's highly UN-optimized on purpose: default engine settings, single replica, no autoscaling.
+# All the tuning lives in Part 3 (see ../part3-optimize/); Part 1 is just the baseline.
 #
 # ── One thing it DOES enable: direct streaming ──────────────────────────────────────
 #
@@ -60,13 +54,10 @@ llm_config = LLMConfig(
     ),
     runtime_env=dict(env_vars={"HF_HUB_ENABLE_HF_TRANSFER": "1"}),
     engine_kwargs=dict(
-        tensor_parallel_size=1,        # single RTX PRO 6000 96GB (g7e.4xlarge) — no TP comms
-        max_model_len=131072,          # 128K. NAIVE: with the default bf16 KV, the full 256K needs FP8
-                                       # KV — that's a Part 3 optimization, so it's left off here.
+        tensor_parallel_size=1,        # single RTX PRO 6000 96GB (g7e.4xlarge)
+        max_model_len=131072,          # 128K
         gpu_memory_utilization=0.85,
-        # kv_cache_dtype left at the vLLM default (bf16) — no FP8 KV optimization here. On this single
-        # 96GB GPU, 128K context fits with ample headroom; exact concurrency isn't separately benchmarked
-        # for this naive config (Part 3 measures the FP8-KV / 256K numbers).
+        # kv_cache_dtype left at the vLLM default — no tuning here; see Part 3.
         max_num_seqs=16,
         max_num_batched_tokens=8192,
         enable_prefix_caching=True,

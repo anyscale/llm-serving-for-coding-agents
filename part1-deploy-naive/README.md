@@ -3,11 +3,11 @@
 Goal: get a working OpenAI-compatible endpoint with the **least** configuration. It's deliberately
 un-optimized — the point is to prove the model serves and to give you a baseline to optimize later.
 
-**What "naive" means here:** 1× RTX PRO 6000 96GB (`g7e.4xlarge`, TP=1), single replica, weights downloaded from remote storage (could also be huggingface) on every cold start,
-default bf16 KV cache (so 128K context, not the full 256K), no compile cache, no autoscaling, no speculative/routing tricks.
-It runs on the **same GPU as the optimized Part 3 service** — Part 1 keeps the hardware identical on purpose, so the
-"before vs. after" is about the software optimizations alone, not a GPU change. It works; it's just the wrong
-*shape* for a team (≈ one concurrent user, slow cold start) until you add the Part 3 optimizations.
+**What "naive" means here:** 1× RTX PRO 6000 96GB (`g7e.4xlarge`, TP=1), single replica, default engine
+settings — deliberately **highly un-optimized**. It runs on the **same GPU as the optimized Part 3 service**,
+so the "before vs. after" is about the software optimizations alone, not a GPU change. It works; it's just the
+wrong *shape* for a team (≈ one concurrent user, slow cold start) until you add the
+[Part 3](../part3-optimize/) optimizations.
 
 ## Files
 - `serve_qwen3_6_27b_naive.py` — the Ray Serve LLM app (one `LLMConfig`, built with `build_openai_app`).
@@ -47,8 +47,8 @@ cd part1-deploy-naive
 python client.py        # sends a chat completion, prints the reply
 ```
 
-The first call after `serve run` (or after idle) **cold-starts** for ~2–3 min (weight download +
-compile). That slowness is what an optimized deployment (fast S3 loader + compile cache) removes.
+The first call after `serve run` (or after idle) **cold-starts** for ~2–3 min. That slowness is one of the
+things [Part 3](../part3-optimize/) removes.
 
 ## Native multi-API endpoint (direct streaming)
 
@@ -90,21 +90,8 @@ also exists — handy for a service *without* direct streaming — but this repo
   request schema. Stock `ray-llm:2.56.0` (vLLM 0.22.0) works for Codex and Cursor, but 0.22.0 rejects Claude
   Code's `system` role; the older GA `ray-llm:2.55.x` ships vLLM 0.18 (too old) and fails to load Qwen3.6.
 - **1× RTX PRO 6000 96GB / TP=1** (`g7e.4xlarge`) — the **same GPU Part 3 optimizes on**. Part 1 uses it as
-  the un-optimized baseline: the FP8 weights fit on this single GPU (no tensor-parallel comms), and holding
-  the hardware fixed isolates the tutorial's before/after to the software optimizations. Part 3 then adds FP8
-  KV cache, full 256K context, MTP speculative decoding, a compile cache, and autoscaling on top of it.
-  (Use `g7e.4xlarge` or larger, not `g7e.2xlarge` — its 64 GiB host RAM OOMs while loading the 27B.)
-
-## KV cache dtype
-
-`serve_qwen3_6_27b_naive.py` leaves `kv_cache_dtype` at the vLLM default (**bf16**) — that's the naive
-choice. On this single 96GB GPU the FP8 weights leave plenty of room for a bf16 KV cache at `max_model_len=131072`
-(128K), so the endpoint serves comfortably; capacity for this specific naive config isn't separately
-benchmarked here.
-
-> **This is the main knob Part 3 turns.** Switching to an **FP8 KV cache** roughly halves KV memory, which
-> is what lets the full **256K** context fit on the same GPU and pushes 256K concurrency from ~3.27× to
-> **6.53×**. Part 1 leaves it at bf16 / 128K on purpose; see Part 3 for the measured FP8-KV numbers.
-
+  the un-optimized baseline; holding the hardware fixed isolates the tutorial's before/after to the software
+  optimizations, which all live in [Part 3](../part3-optimize/). (Use `g7e.4xlarge` or larger, not
+  `g7e.2xlarge` — its 64 GiB host RAM OOMs while loading the 27B.)
 
 → Next: **[Part 2 — connect Claude Code / Codex / Cursor](../part2-connect-clients-production/README.md)** (no proxy).
