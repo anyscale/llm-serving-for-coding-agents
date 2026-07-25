@@ -5,7 +5,7 @@ These measurements map to the `ENABLE_*` control panel in
 
 Unless noted, results are from 1× RTX PRO 6000 (`g7e.4xlarge`, 96 GB, SM120), TP=1. The current default is
 `nvidia/Qwen3.6-27B-NVFP4` on vLLM 0.23.0. Older FP8 measurements are labeled where they have not yet been
-rerun with NVFP4. Anything not yet remeasured is listed in [TODO](#todo).
+rerun with NVFP4.
 
 Note on context length: the decode/throughput numbers were measured at `max_model_len=81920` with real
 prompts up to ~73K tokens. Per-token rates are largely insensitive to the `max_model_len` cap, but treat the
@@ -171,13 +171,3 @@ ray-llm 2.57.
 [Direct streaming](https://docs.ray.io/en/latest/serve/llm/user-guides/direct-streaming.html) exposes `/v1/messages` for Claude Code and `/v1/responses` for Codex alongside
 `/v1/chat/completions`. It is required for this demo and is enabled by service-level env vars in
 the Part 3 service YAMLs, so keep it on.
-
-## TODO
-
-Rerun the CUDA-graphs-only benchmark with NVFP4 weights. Measure the NVFP4 spec-decode concurrency curve on
-RTX PRO 6000: sweep concurrency, compare base vs MTP, and find
-where throughput peaks or KV preemption starts. Use that to tune `autoscaling_config.target_ongoing_requests`,
-which is currently a conservative untested `8`.
-
-Raw per-run JSON and load-test harnesses (`serve_bench_router_rtx.py`, `ds_bench_agent*.py`,
-`gen_fair_trace.py`) live in the Anyscale build workspace, not this repo.
