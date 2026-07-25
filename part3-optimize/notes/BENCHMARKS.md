@@ -4,8 +4,7 @@ These measurements map to the `ENABLE_*` control panel in
 [`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py).
 
 Unless noted, results are from 1× RTX PRO 6000 (`g7e.4xlarge`, 96 GB, SM120), TP=1. The current default is
-`nvidia/Qwen3.6-27B-NVFP4` on vLLM 0.23.0. Older FP8 measurements are labeled where they have not yet been
-rerun with NVFP4.
+`nvidia/Qwen3.6-27B-NVFP4` on vLLM 0.23.0.
 
 Note on context length: the decode/throughput numbers were measured at `max_model_len=81920` with real
 prompts up to ~73K tokens. Per-token rates are largely insensitive to the `max_model_len` cap, but treat the
