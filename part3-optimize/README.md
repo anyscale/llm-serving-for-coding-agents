@@ -10,22 +10,36 @@ cost-reduction case, including savings vs commercial seats and token-metered API
 [`notes/COST-ESTIMATE.md`](notes/COST-ESTIMATE.md).
 
 The Part 3 image upgrades the base image's vLLM 0.22.0 to 0.23.0 for compatibility with Claude Code's
-current `/v1/messages` schema. The benchmark and compile-cache results remain measured on vLLM 0.22.0.
+current `/v1/messages` schema and the validated NVFP4 deployment.
 
 ## What Changes
 
 | Area | [Naive](../part1-deploy-naive/serve_qwen3_6_27b_naive.py) | [Optimized](serve_qwen3_6_27b_optimized.py) |
 |---|---|---|
 | GPU | 4× L4, TP=4 | 1× RTX PRO 6000 96 GB, TP=1 (`g7e.4xlarge`) |
-| Context | FP8, 128K | FP8, full 256K |
+| Weights | FP8 | NVFP4 (~22 GB; FP8 fallback retained for older FP8-capable GPUs) |
+| Context / KV | 128K | Full 256K with FP8 KV |
 | Model load | S3 download, ~85 s | HF download, ~85 s by default; optional RunAI Streamer S3→GPU, ~25 s |
-| Compile | Recompile every cold start, ~74 s | S3 torch.compile cache, ~9 s |
-| Decode | CUDA graphs only | CUDA graphs + MTP speculative decoding, ~1.9× faster decode |
+| Compile | Recompile every cold start, ~74 s | No-MTP text path: S3 torch.compile cache, ~9 s; MTP/image graphs compile cold |
+| Decode | CUDA graphs only | NVFP4 + CUDA graphs + MTP: 121 tok/s vs 65 tok/s without MTP |
 | Scaling | Single replica | Autoscale 1→4, round-robin via [`service-always-on.yaml`](service-always-on.yaml) (or 0→4 via [`service-work-hours.yaml`](service-work-hours.yaml)) |
 
-Why RTX PRO 6000 + FP8? FP8 weights plus an FP8 256K KV cache fit comfortably on the 96 GB card, with about
-6.5× concurrency at full context and better quality than 4-bit. (Note: `nvfp4` KV cache is not usable on this
-GPU — its FP4 attention kernel is datacenter-Blackwell-only and crashes on SM120; use `fp8`.)
+Why RTX PRO 6000 + NVFP4? The `nvidia/Qwen3.6-27B-NVFP4` checkpoint reduces weight memory to about 22 GB
+(vs about 27 GB for FP8), leaving more room for long-context KV cache. NVIDIA's model card reports very
+similar FP8 and NVFP4 quality across its evaluation suite. On RTX PRO 6000 (SM120), vLLM currently uses the
+Marlin fallback rather than a native dense-NVFP4 kernel.
+
+Weight precision and KV precision are separate. This service uses **NVFP4 weights with FP8 KV**. Do not set
+the KV cache to `nvfp4` on RTX PRO 6000: that attention kernel is datacenter-Blackwell-only and crashes on
+SM120. FP8 KV provides the measured 6.53× concurrency at full 256K context.
+
+### Older GPU architectures
+
+For older GPUs with native FP8 support, such as Hopper H100, use the retained
+`Qwen/Qwen3.6-27B-FP8` settings in `serve_qwen3_6_27b_optimized.py`. Uncomment the three FP8 weight settings,
+use a service shape for that GPU, disable the RTX PRO 6000 NVFP4 compile cache, and rebuild the cache for the
+exact GPU/image/graph combination. Ampere does not provide native FP8 support, so this FP8 fallback does not
+apply to A100/A10.
 
 ## Control Panel
 
@@ -34,10 +48,10 @@ GPU — its FP4 attention kernel is datacenter-Blackwell-only and crashes on SM1
 | Knob | Default | Why |
 |---|---|---|
 | `ENABLE_FAST_MODEL_LOADING` | `False` | Optional RunAI Streamer path for cold-start-focused deployments. Leave off when spec decode is on. |
-| `ENABLE_COMPILE_CACHE` | `True` | Restores prebuilt torch.compile caches, cutting compile from ~74.5 s to ~8.8 s. |
+| `ENABLE_COMPILE_CACHE` | `True` | Restores the no-MTP NVFP4 text-graph cache, cutting compile from ~74.5 s to ~8.8 s. Automatically disabled when MTP is on. |
 | `ENABLE_FP8_KV_CACHE` | `True` | Halves KV memory so the full 256K context fits. |
 | `ENABLE_CUDA_GRAPHS` | `True` | Biggest free win: ~2.87× decode on Blackwell. |
-| `ENABLE_SPEC_DECODE` | `True` | MTP gives ~1.9× decode on the coding-agent replay. This is the default because agent work benefits more from lower TPOT than from a faster cold weight load. |
+| `ENABLE_SPEC_DECODE` | `True` | MTP gives 121 tok/s vs 65 tok/s on the NVFP4 single-stream test. Set `ENABLE_SPEC_DECODE=0` for saturated high-concurrency traffic. |
 | `ENABLE_PREFIX_ROUTING` | `False` | Optional for diverse multi-user prefixes. The single-user replay data here shares the same prompts, skills, and harness context, so round-robin is the simpler default. |
 
 Direct streaming is always on because Part 2 connects Claude Code (`/v1/messages`), Codex (`/v1/responses`), and Cursor (`/v1/chat/completions`) to these native endpoints.
@@ -64,10 +78,13 @@ cd part3-optimize
 anyscale service deploy -f service-always-on.yaml --working-dir .
 ```
 
-The default uses the Hugging Face loader so MTP speculative decoding can stay on. If your priority is
+The default downloads `nvidia/Qwen3.6-27B-NVFP4` with the Hugging Face loader so MTP speculative decoding
+can stay on. If your priority is
 cold-start time instead of decode speed, use the commented fast-loading recipe in
-[`serve_qwen3_6_27b_optimized.py`](serve_qwen3_6_27b_optimized.py): set `ENABLE_SPEC_DECODE=False` and
-`ENABLE_FAST_MODEL_LOADING=True`, upload the FP8 weights once (`hf download Qwen/Qwen3.6-27B-FP8`, then
+[`serve_qwen3_6_27b_optimized.py`](serve_qwen3_6_27b_optimized.py): set
+`ENABLE_FAST_MODEL_LOADING=True`, uncomment `ENABLE_SPEC_DECODE: "0"` in the service YAML, and upload the
+NVFP4 weights once
+(`hf download nvidia/Qwen3.6-27B-NVFP4`, then
 `aws s3 sync`), and point `S3_WEIGHTS` at that `s3://...` path.
 
 Then point your Part 2 clients at this service's URL (for Cursor, copy it from the console **Query** panel).
@@ -97,7 +114,7 @@ anyscale service deploy -f service-work-hours.yaml --working-dir .
 > terminates after ~35 idle minutes before counting on the work-hours numbers.
 
 Then schedule [`warmup.sh`](warmup.sh) for 7 am on weekdays so the first developer never
-waits out the cold start (node provisioning + ~85 s HF weight load + ~9 s compile restore by default):
+waits out node provisioning, NVFP4 weight loading, compilation, and engine warmup:
 
 - **Anyscale scheduled job** — fill in the service URL and token in
   [`schedule-work-hours-warmup.yaml`](schedule-work-hours-warmup.yaml), then (from `part3-optimize/`)

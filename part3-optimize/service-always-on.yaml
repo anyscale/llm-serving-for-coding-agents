@@ -5,7 +5,7 @@
 #
 # Deploy from the part3-optimize/ directory (containerfile: and working_dir: resolve against the
 # CLI's CWD): anyscale service deploy -f service-always-on.yaml --working-dir .
-name: qwen3-6-27b-fp8-rtxpro6000-always-on
+name: qwen3-6-27b-nvfp4-rtxpro6000-always-on
 # Builds ray-llm + runai-model-streamer from the Containerfile at deploy time.
 # Alternative: pre-build once (`anyscale image build -f Containerfile`) and set image_uri instead.
 containerfile: Containerfile
@@ -16,6 +16,8 @@ containerfile: Containerfile
 env_vars:
   RAY_SERVE_ENABLE_HA_PROXY: "1"
   RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"
+  # High-concurrency mode: disable MTP so aggregate throughput can scale and the no-MTP cache is restored.
+  # ENABLE_SPEC_DECODE: "0"
 compute_config:
   worker_nodes:
     # AWS g7e.4xlarge = 1x NVIDIA RTX PRO 6000 96GB (Blackwell SM120), 16 vCPU, 128 GiB host RAM; TP=1.

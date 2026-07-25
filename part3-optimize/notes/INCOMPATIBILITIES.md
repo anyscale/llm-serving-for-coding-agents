@@ -3,8 +3,9 @@
 Read this before changing toggles in
 [`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py).
 
-These findings were measured or root-caused on `qwen3.6-27b` FP8, 1× RTX PRO 6000 96 GB
-(`g7e.4xlarge`), `ray-llm:2.56.0-py312-cu130`, and vLLM 0.22.0. Full numbers are in
+These findings were measured or root-caused on `qwen3.6-27b`, 1× RTX PRO 6000 96 GB
+(`g7e.4xlarge`), `ray-llm:2.56.0-py312-cu130`, and vLLM 0.22.0–0.23.0. The current weight default is
+`nvidia/Qwen3.6-27B-NVFP4`; FP8 remains the KV-cache dtype. Full numbers are in
 [`BENCHMARKS.md`](BENCHMARKS.md).
 
 ## Claude Code Compatibility
@@ -29,7 +30,7 @@ does not resolve it in end-to-end testing.
 
 Choose one:
 
-- Default: enable MTP for ~1.89× faster decode and accept the slower HF loader.
+- Default: enable MTP for ~1.86× faster NVFP4 single-stream decode and accept the slower HF loader.
 - Optional cold-start path: keep RunAI Streamer for faster cold starts and turn MTP off.
 
 The control panel automatically disables `ENABLE_FAST_MODEL_LOADING` when `ENABLE_SPEC_DECODE=True`.
@@ -37,7 +38,13 @@ The control panel automatically disables `ENABLE_FAST_MODEL_LOADING` when `ENABL
 MTP + CUDA graphs is coherent on RTX PRO 6000. The older `#40880` degenerate-output issue does not occur
 here, so CUDA graphs can stay on with MTP.
 
-### 2. Direct Streaming and Built-In Prefix Routing
+### 2. MTP and the No-MTP Compile Cache
+
+The prebuilt NVFP4 cache is keyed to the no-MTP text graph. MTP and image-heavy requests produce different
+compile graphs, so they cannot reuse that cache. The control panel automatically disables
+`ENABLE_COMPILE_CACHE` when MTP is enabled.
+
+### 3. Direct Streaming and Built-In Prefix Routing
 
 Direct streaming plus Ray's built-in `PrefixCacheAffinityRouter` hangs on ray-llm 2.56. The direct-streaming
 ingress puts the raw body in `pending_request.kwargs["request_body"]`, but that router only checks
@@ -54,10 +61,10 @@ In this tutorial, direct streaming is always on. That is why prefix routing, whe
 
 ## What Composes
 
-This set works together and is enabled in
+This default set works together and is enabled in
 [`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py):
 
-- torch.compile cache
+- NVFP4 weights
 - FP8 KV cache
 - CUDA graphs
 - MTP speculative decoding (`qwen3_next_mtp`)
@@ -66,6 +73,8 @@ This set works together and is enabled in
 - tool calling (`qwen3_coder`)
 - reasoning parser (`qwen3`)
 
-The deliberate opt-ins are `ENABLE_FAST_MODEL_LOADING` and `ENABLE_PREFIX_ROUTING`. Fast loading is useful
-when cold-start time matters more than decode speed; prefix routing depends on traffic shape. See
+With MTP off, the no-MTP NVFP4 text-graph compile cache composes with FP8 KV, CUDA graphs, autoscaling, and
+direct streaming. The deliberate opt-ins are `ENABLE_FAST_MODEL_LOADING` and `ENABLE_PREFIX_ROUTING`. Fast
+loading is useful when cold-start time matters more than decode speed; prefix routing depends on traffic
+shape. See
 [`BENCHMARKS.md`](BENCHMARKS.md) for the spec-decode numbers and the prefix-routing guidance.

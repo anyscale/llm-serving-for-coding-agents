@@ -53,7 +53,8 @@ Break-even is small because the GPU is a shared fixed cost:
 ## Core Assumptions
 
 The self-hosted service runs on one `g7e.4xlarge` with one NVIDIA RTX PRO 6000 Blackwell
-Server Edition GPU, which has **96 GB GPU memory**.
+Server Edition GPU, which has **96 GB GPU memory**. It uses NVFP4 weights (~22 GB) and FP8 KV cache;
+these are separate precision choices.
 
 | Input | Planning value |
 |---|---:|
@@ -63,7 +64,8 @@ Server Edition GPU, which has **96 GB GPU memory**.
 | Planning registered developers per GPU | ~50 |
 | Input tokens per turn | ~70K |
 
-The `~24` active-session estimate comes from average token length: FP8 KV measured about **6.53x**
+The `~24` active-session estimate comes from average token length: FP8 KV with the NVFP4 weight deployment
+measured about **6.53x**
 256K-context concurrency, or roughly **1.7M cached tokens/GPU**. At `~70K` tokens per turn, that is
 about 24 average-length sessions.
 
@@ -195,6 +197,10 @@ can interrupt active sessions, discard KV cache, and add cold-start latency.
   it completes the same coding-agent work with acceptable extra turns. The quality case is that
   [Qwen positions Qwen3.6-27B as comparable to Claude Opus 4.5](https://qwen.ai/blog?id=qwen3.6-27b),
   but teams should still validate it on their own coding-agent workload.
+- **Weight precision:** the RTX PRO 6000 default is NVIDIA's NVFP4 checkpoint. NVIDIA reports quality close
+  to its FP8 baseline across its published evaluation suite, but teams should compare both checkpoints on
+  their own coding-agent tasks. Older FP8-capable GPU deployments should use the retained FP8 settings and
+  rerun capacity/performance measurements.
 - **Capacity:** the ~24 active-session estimate is based on average context length. It should not be
   treated as an SLA capacity. Real coding-agent sessions are likely heavy-tailed: some sessions will
   carry much larger histories than 70K tokens, reducing effective concurrency. The 50-developer/GPU
