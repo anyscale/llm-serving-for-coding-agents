@@ -4,8 +4,7 @@ These measurements map to the `ENABLE_*` control panel in
 [`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py).
 
 Unless noted, results are from 1× RTX PRO 6000 (`g7e.4xlarge`, 96 GB, SM120), TP=1. The current default is
-`nvidia/Qwen3.6-27B-NVFP4` on vLLM 0.23.0. Older FP8 measurements are labeled where they have not yet been
-rerun with NVFP4. Anything not yet remeasured is listed in [TODO](#todo).
+`nvidia/Qwen3.6-27B-NVFP4` on vLLM 0.23.0.
 
 Note on context length: the decode/throughput numbers were measured at `max_model_len=81920` with real
 prompts up to ~73K tokens. Per-token rates are largely insensitive to the `max_model_len` cap, but treat the
@@ -17,6 +16,7 @@ Each row compares one knob off vs on, on the same hardware.
 
 | # | Knob | Off | On | Result | Default |
 |---|---|---|---|---|---|
+| 0 | Model weights | FP8, ~27 GB | NVFP4, ~22 GB | ~5 GB smaller (~19%) | NVFP4 |
 | 1 | `ENABLE_FAST_MODEL_LOADING` | HF download, ~85 s | RunAI Streamer, ~25 s | 3.4× faster load | Off |
 | 2 | `ENABLE_COMPILE_CACHE` | Recompile, 74.5 s | Prebuilt cache, 8.8 s | 8.5× faster compile | On only without MTP |
 | 3 | `ENABLE_FP8_KV_CACHE` | bf16 KV, ~3.3× concurrency at 256K | fp8 KV, full 256K | 6.53× concurrency | On |
@@ -42,6 +42,11 @@ Weights and KV cache use independent formats:
 |---|---|---|
 | Weights | NVFP4 (~22 GB) | `Qwen/Qwen3.6-27B-FP8` (~27 GB) |
 | KV cache | FP8 | FP8 |
+
+NVFP4 is not half the total FP8 weight footprint because the checkpoint quantizes only linear operators
+inside the transformer blocks. The vision tower and excluded modules remain at higher precision, while
+per-block scales and other quantization metadata add overhead. The ~22 GB and ~27 GB figures are therefore
+whole-model footprints, not just the raw bytes of the quantized matrices.
 
 NVIDIA's model card reports closely matched FP8 and NVFP4 quality across MMLU Pro, GPQA Diamond, HLE,
 τ²-Bench Telecom, MMMU Pro, SciCode, AIME 2025, AA-LCR, and IFBench. On SM120, dense NVFP4 currently runs
@@ -165,13 +170,3 @@ ray-llm 2.57.
 [Direct streaming](https://docs.ray.io/en/latest/serve/llm/user-guides/direct-streaming.html) exposes `/v1/messages` for Claude Code and `/v1/responses` for Codex alongside
 `/v1/chat/completions`. It is required for this demo and is enabled by service-level env vars in
 the Part 3 service YAMLs, so keep it on.
-
-## TODO
-
-Rerun the CUDA-graphs-only benchmark with NVFP4 weights. Measure the NVFP4 spec-decode concurrency curve on
-RTX PRO 6000: sweep concurrency, compare base vs MTP, and find
-where throughput peaks or KV preemption starts. Use that to tune `autoscaling_config.target_ongoing_requests`,
-which is currently a conservative untested `8`.
-
-Raw per-run JSON and load-test harnesses (`serve_bench_router_rtx.py`, `ds_bench_agent*.py`,
-`gen_fair_trace.py`) live in the Anyscale build workspace, not this repo.

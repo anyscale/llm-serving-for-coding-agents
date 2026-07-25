@@ -6,7 +6,7 @@
 # (for the no-MTP path) the prebuilt compile cache. NVFP4 weights are ~22 GB (vs FP8 ~27 GB), freeing KV
 # headroom; they run the Marlin (non-native) FP4 path on SM120 (no dense-NVFP4 SM120 kernel in vLLM yet:
 # vllm#31085 / #33417 cover MoE only). The checkpoint is a vision-language model and serves image input
-# (verified on RTX PRO 6000 / vLLM 0.23.0). Every remaining optimization is a toggle in the CONTROL PANEL.
+# (verified on RTX PRO 6000 / vLLM 0.23.0). Every optimization is a toggle in the CONTROL PANEL.
 # Full measurements + the "knobs that can't be combined" matrix:
 # notes/BENCHMARKS.md / notes/INCOMPATIBILITIES.md.
 
@@ -15,8 +15,14 @@ import os
 # ════════════════════════════════ OPTIMIZATION CONTROL PANEL ════════════════════════════════
 # Flip each ON/OFF. Mutually-exclusive combos are flagged with ⚠ (and enforced by a guard below).
 
-# (1) FAST MODEL LOADING — optional cold-start path, not the default. RunAI Streamer streams the NVFP4
-#     weights S3 -> GPU (~85s -> ~25s cold start). Needs runai-model-streamer in the image
+# (0) NVFP4 WEIGHTS — use NVIDIA's ~22 GB 4-bit checkpoint instead of the ~27 GB FP8 checkpoint.
+#     ON is the RTX PRO 6000 default. Turn OFF for the FP8 baseline or for older FP8-capable GPUs such as
+#     Hopper H100. This changes model weights only; FP8 KV cache is controlled independently by knob 3.
+#     ⚠ The prebuilt compile cache is NVFP4-specific, so turning this OFF also disables knob 2.
+ENABLE_NVFP4_WEIGHTS = True
+
+# (1) FAST MODEL LOADING — optional cold-start path, not the default. RunAI Streamer streams the selected
+#     checkpoint from S3 -> GPU (~85s -> ~25s cold start). Needs runai-model-streamer in the image
 #     (Containerfile) + cluster S3 read access. Validated on RTX PRO 6000 / vLLM 0.23.0.
 #     ⚠ Mutually exclusive with ENABLE_SPEC_DECODE (vllm#42060). To opt into fast loading instead of MTP
 #     decode speed, set:
@@ -63,32 +69,37 @@ ENABLE_PREFIX_ROUTING = False
 # MTP needs the HF loader, so turning spec decode on makes fast loading turn itself off (vllm#42060).
 # It also has a distinct torch.compile graph with no prebuilt cache. Resolve both here so the env toggle
 # needs no second edit.
+WEIGHT_FORMAT = "NVFP4" if ENABLE_NVFP4_WEIGHTS else "FP8"
+if not ENABLE_NVFP4_WEIGHTS and ENABLE_COMPILE_CACHE:
+    print("[config] ENABLE_NVFP4_WEIGHTS=False -> disabling ENABLE_COMPILE_CACHE "
+          "(the prebuilt cache is keyed to NVFP4 weights).")
+    ENABLE_COMPILE_CACHE = False
+
 if ENABLE_SPEC_DECODE:
     ENABLE_COMPILE_CACHE = False
     if ENABLE_FAST_MODEL_LOADING:
         print("[config] ENABLE_SPEC_DECODE=True -> disabling ENABLE_FAST_MODEL_LOADING "
               "(RunAI Streamer conflicts with MTP, vllm#42060); using the HF loader instead.")
         ENABLE_FAST_MODEL_LOADING = False
-    print("[config] NVFP4 weights + MTP (default). MTP has no prebuilt compile cache -> cold compile. "
+    print(f"[config] {WEIGHT_FORMAT} weights + MTP. MTP has no prebuilt compile cache -> cold compile. "
           "For high concurrency set ENABLE_SPEC_DECODE=0.")
 else:
-    print("[config] NVFP4 weights, no MTP (high concurrency) -> using the prebuilt NVFP4 compile cache.")
+    cache_status = "using the prebuilt NVFP4 compile cache" if ENABLE_COMPILE_CACHE else "compiling cold"
+    print(f"[config] {WEIGHT_FORMAT} weights, no MTP (high concurrency) -> {cache_status}.")
 
 from ray.serve.llm import LLMConfig, build_openai_app
 
 # ── Fixed for this deployment ────────────────────────────────────────────────
-MODEL_ID   = "qwen3.6-27b"
-HF_SOURCE  = "nvidia/Qwen3.6-27B-NVFP4"                                       # RTX PRO 6000 default
-S3_WEIGHTS = "s3://llm-guide/data/ray-serve-llm/hf_repo/Qwen3.6-27B-NVFP4/"   # NVFP4 RunAI mirror
-WEIGHT_QUANTIZATION = "modelopt"
-
-# Older FP8-capable GPU architectures (for example Hopper H100) should use the FP8 checkpoint instead.
-# Ampere GPUs do not have native FP8 support. Uncomment all three lines together, select an appropriate older-GPU
-# service shape, set ENABLE_COMPILE_CACHE=False until a matching cache exists, and rebuild the cache for that
-# exact GPU/image/graph combination:
-# HF_SOURCE  = "Qwen/Qwen3.6-27B-FP8"
-# S3_WEIGHTS = "s3://llm-guide/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/"
-# WEIGHT_QUANTIZATION = None  # let vLLM infer the FP8 checkpoint's quantization metadata
+MODEL_ID = "qwen3.6-27b"
+if ENABLE_NVFP4_WEIGHTS:
+    HF_SOURCE = "nvidia/Qwen3.6-27B-NVFP4"
+    S3_WEIGHTS = "s3://llm-guide/data/ray-serve-llm/hf_repo/Qwen3.6-27B-NVFP4/"
+    WEIGHT_QUANTIZATION = "modelopt"
+else:
+    # FP8 baseline and older FP8-capable GPU path. Ampere GPUs do not have native FP8 support.
+    HF_SOURCE = "Qwen/Qwen3.6-27B-FP8"
+    S3_WEIGHTS = "s3://llm-guide/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/"
+    WEIGHT_QUANTIZATION = None  # let vLLM infer the checkpoint's FP8 quantization metadata
 
 # NVFP4 compile cache (built + uploaded 2026-07-23; keyed to vLLM 0.23.0 / RTX PRO 6000 (SM120) / NVFP4
 # weights + FP8 KV / TP=1 / 256K, no-MTP text graph). Used when ENABLE_COMPILE_CACHE and MTP is off. vLLM
@@ -137,7 +148,7 @@ if ENABLE_FP8_KV_CACHE:
 if not ENABLE_CUDA_GRAPHS:
     engine_kwargs["enforce_eager"] = True
 
-# (5) Speculative decoding (MTP). The NVFP4 checkpoint carries the MTP drafter.
+# (5) Speculative decoding (MTP). Both weight checkpoints carry the MTP drafter.
 if ENABLE_SPEC_DECODE:
     # num_speculative_tokens=3 is the measured sweet spot on the real agent replay: +24% out tok/s,
     # +44% turns/s, -19% TPOT vs 2. 4 REGRESSES below 2 (draft/verify overhead > acceptance gain).
