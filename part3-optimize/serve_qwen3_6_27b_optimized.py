@@ -164,15 +164,14 @@ deployment_config = dict(
         # with warmup.sh on a weekday-morning cron; cost math in notes/COST-ESTIMATE.md.
         min_replicas=int(os.environ.get("MIN_REPLICAS", "1")),
         max_replicas=4,            # scale out for peak; each replica = 1 RTX PRO 6000 node (g7e.4xlarge)
-        target_ongoing_requests=8,  # CONSERVATIVE, untested on Pro 6000 — scale out early so the autoscaler
-                                    # doesn't pile cold ~73K-tok prefills on one GPU (TTFT/preemption). TODO: measure
-                                    # the Pro 6000 capacity cliff (notes/BENCHMARKS.md "TODO") and tune; raise toward 16 if prompts cache well.
+        target_ongoing_requests=16,  # CONSERVATIVE, untested on Pro 6000 — scale out early so the autoscaler
+                                    # doesn't pile cold ~73K-tok prefills on one GPU (TTFT/preemption)
         upscale_delay_s=30,
         # service-work-hours.yaml raises this to 1800 so a lunch-break lull doesn't trigger a
         # mid-day cold start.
         downscale_delay_s=int(os.environ.get("DOWNSCALE_DELAY_S", "600")),
     ),
-    max_ongoing_requests=64,
+    max_ongoing_requests=32,
 )
 
 # (6) Prefix-aware routing (only with max_replicas > 1 AND diverse stable prefixes).
