@@ -17,6 +17,7 @@ Each row compares one knob off vs on, on the same hardware.
 
 | # | Knob | Off | On | Result | Default |
 |---|---|---|---|---|---|
+| 0 | Model weights | FP8, ~27 GB | NVFP4, ~22 GB | ~5 GB smaller (~19%) | NVFP4 |
 | 1 | `ENABLE_FAST_MODEL_LOADING` | HF download, ~85 s | RunAI Streamer, ~25 s | 3.4× faster load | Off |
 | 2 | `ENABLE_COMPILE_CACHE` | Recompile, 74.5 s | Prebuilt cache, 8.8 s | 8.5× faster compile | On only without MTP |
 | 3 | `ENABLE_FP8_KV_CACHE` | bf16 KV, ~3.3× concurrency at 256K | fp8 KV, full 256K | 6.53× concurrency | On |
@@ -42,6 +43,11 @@ Weights and KV cache use independent formats:
 |---|---|---|
 | Weights | NVFP4 (~22 GB) | `Qwen/Qwen3.6-27B-FP8` (~27 GB) |
 | KV cache | FP8 | FP8 |
+
+NVFP4 is not half the total FP8 weight footprint because the checkpoint quantizes only linear operators
+inside the transformer blocks. The vision tower and excluded modules remain at higher precision, while
+per-block scales and other quantization metadata add overhead. The ~22 GB and ~27 GB figures are therefore
+whole-model footprints, not just the raw bytes of the quantized matrices.
 
 NVIDIA's model card reports closely matched FP8 and NVFP4 quality across MMLU Pro, GPQA Diamond, HLE,
 τ²-Bench Telecom, MMMU Pro, SciCode, AIME 2025, AA-LCR, and IFBench. On SM120, dense NVFP4 currently runs
