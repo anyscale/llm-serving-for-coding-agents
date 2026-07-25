@@ -3,8 +3,9 @@
 These measurements map to the `ENABLE_*` control panel in
 [`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py).
 
-Unless noted, results are from 1× RTX PRO 6000 (`g7e.4xlarge`, 96 GB, SM120), TP=1, vLLM 0.22.0
-(`ray-llm:2.56.0`). Anything not yet remeasured on the Pro 6000 is listed in [TODO](#todo).
+Unless noted, results are from 1× RTX PRO 6000 (`g7e.4xlarge`, 96 GB, SM120), TP=1. The current default is
+`nvidia/Qwen3.6-27B-NVFP4` on vLLM 0.23.0. Older FP8 measurements are labeled where they have not yet been
+rerun with NVFP4. Anything not yet remeasured is listed in [TODO](#todo).
 
 Note on context length: the decode/throughput numbers were measured at `max_model_len=81920` with real
 prompts up to ~73K tokens. Per-token rates are largely insensitive to the `max_model_len` cap, but treat the
@@ -17,19 +18,36 @@ Each row compares one knob off vs on, on the same hardware.
 | # | Knob | Off | On | Result | Default |
 |---|---|---|---|---|---|
 | 1 | `ENABLE_FAST_MODEL_LOADING` | HF download, ~85 s | RunAI Streamer, ~25 s | 3.4× faster load | Off |
-| 2 | `ENABLE_COMPILE_CACHE` | Recompile, 74.5 s | Prebuilt cache, 8.8 s | 8.5× faster compile | On |
+| 2 | `ENABLE_COMPILE_CACHE` | Recompile, 74.5 s | Prebuilt cache, 8.8 s | 8.5× faster compile | On only without MTP |
 | 3 | `ENABLE_FP8_KV_CACHE` | bf16 KV, ~3.3× concurrency at 256K | fp8 KV, full 256K | 6.53× concurrency | On |
-| 4 | `ENABLE_CUDA_GRAPHS` | Eager, 15.9 tok/s | Graphs, 45.6 tok/s | 2.87× decode | On |
-| 5 | `ENABLE_SPEC_DECODE` | Base, 45.6 tok/s | MTP, 86.4 tok/s | 1.89× decode | On |
+| 4 | `ENABLE_CUDA_GRAPHS` | Eager, 15.9 tok/s | Graphs, 45.6 tok/s | 2.87× decode (FP8 measurement) | On |
+| 5 | `ENABLE_SPEC_DECODE` | NVFP4 base, 65 tok/s | NVFP4 + MTP, 121 tok/s | 1.86× single-stream decode | On |
 
 Spec decode is on by default because the tutorial targets coding-agent traffic, where lower TPOT during
 multi-token generation matters more than shaving about a minute from cold weight load. Fast model loading is
-kept as an opt-in because RunAI Streamer and MTP cannot currently coexist on vLLM 0.22.0
-([vllm#42060](https://github.com/vllm-project/vllm/issues/42060)). Prefix routing is off by default because the
+kept as an opt-in because RunAI Streamer and MTP cannot currently coexist (validated through vLLM 0.23.0;
+[vllm#42060](https://github.com/vllm-project/vllm/issues/42060)). Prefix routing is off by default because the
 single-user replay data in this tutorial does not need replica affinity; see [Prefix Routing](#6-prefix-routing)
 for when to opt in. The built-in router also needs the ray-llm 2.57 direct-streaming fix
 ([ray#64328](https://github.com/ray-project/ray/pull/64328)). See
-[`INCOMPATIBILITIES.md`](INCOMPATIBILITIES.md) for combinations that cannot coexist.
+[`INCOMPATIBILITIES.md`](INCOMPATIBILITIES.md) for combinations that cannot coexist. The MTP graph does not
+use the prebuilt no-MTP compile cache, so enabling MTP automatically disables cache restoration.
+
+## Weight Format Baseline
+
+RTX PRO 6000 defaults to the NVIDIA 4-bit checkpoint, `nvidia/Qwen3.6-27B-NVFP4`, while retaining FP8 KV.
+Weights and KV cache use independent formats:
+
+| Component | RTX PRO 6000 default | Older FP8-capable GPU fallback |
+|---|---|---|
+| Weights | NVFP4 (~22 GB) | `Qwen/Qwen3.6-27B-FP8` (~27 GB) |
+| KV cache | FP8 | FP8 |
+
+NVIDIA's model card reports closely matched FP8 and NVFP4 quality across MMLU Pro, GPQA Diamond, HLE,
+τ²-Bench Telecom, MMMU Pro, SciCode, AIME 2025, AA-LCR, and IFBench. On SM120, dense NVFP4 currently runs
+through vLLM's Marlin fallback rather than a native dense-NVFP4 kernel. For older architectures with native
+FP8 support (for example Hopper), use the commented FP8 source settings and rebuild the compile cache for
+that hardware. Ampere is not a native-FP8 fallback target.
 
 ## Workloads
 
@@ -39,7 +57,7 @@ for when to opt in. The built-in router also needs the ray-llm 2.57 direct-strea
 
 ## 1. Fast Model Loading
 
-[RunAI Model Streamer](https://docs.ray.io/en/latest/serve/llm/user-guides/deployment-initialization.html#s3-and-runai-streamer) loads FP8 weights from S3 to GPU instead of using a plain Hugging Face download. It requires
+[RunAI Model Streamer](https://docs.ray.io/en/latest/serve/llm/user-guides/deployment-initialization.html#s3-and-runai-streamer) loads NVFP4 weights from S3 to GPU instead of using a plain Hugging Face download. It requires
 `runai-model-streamer` in the image and S3 read access from the cluster.
 
 | Loader | Cold weight load |
@@ -56,15 +74,16 @@ automatically when spec decode is enabled.
 ## 2. Compile Cache
 
 The service restores prebuilt inductor + AOT [torch.compile](https://docs.ray.io/en/latest/serve/llm/user-guides/deployment-initialization.html#torch-compile-cache) caches from S3, so a fresh replica skips compile.
-The cache was rebuilt and validated on 2026-06-30 for vLLM 0.22.0, RTX PRO 6000, FP8 weights + KV, TP=1,
-and 256K context. Rebuild under a new S3 prefix if the image, GPU, or flags change.
+The no-MTP text-graph cache was built and uploaded on 2026-07-23 for vLLM 0.23.0, RTX PRO 6000, NVFP4
+weights + FP8 KV, TP=1, and 256K context. MTP and image-heavy requests have different graphs and compile
+cold. Rebuild under a new S3 prefix if the image, GPU, weight format, or flags change.
 
 | Compile path | Time |
 |---|---|
 | Cold compile | 74.5 s |
 | Prebuilt cache restored | 8.8 s |
 
-Verdict: keep on. Turning it off makes each scale-up compile cold.
+Verdict: keep on for the no-MTP text path. The control panel disables it automatically when MTP is enabled.
 
 ## 3. FP8 KV Cache
 
@@ -84,8 +103,8 @@ RTX PRO 6000 (SM120) it starts cleanly and then **crashes on the first request**
 
 ## 4. CUDA Graphs
 
-[CUDA graphs](https://docs.vllm.ai/en/latest/design/cuda_graphs/) are enabled by leaving `enforce_eager` off. On real agent prompts with FP8 and `max_model_len`
-81920:
+[CUDA graphs](https://docs.vllm.ai/en/latest/design/cuda_graphs/) are enabled by leaving `enforce_eager` off.
+The following older measurement used FP8 weights and real agent prompts with `max_model_len=81920`:
 
 | Config | Decode tok/s |
 |---|---|
@@ -96,9 +115,10 @@ Verdict: keep on. This is the largest free speedup; turn it off only for debuggi
 
 ## 5. Speculative Decoding
 
-[MTP (Multi-Token Prediction)](https://docs.vllm.ai/en/stable/features/speculative_decoding/mtp/) (`qwen3_next_mtp`) is coherent on Blackwell and improves decode from 45.6 to 86.4 tok/s on real agent
-prompts. It is on by default because coding-agent sessions benefit more from lower TPOT during active work
-than from the ~60 s RunAI cold-start win.
+[MTP (Multi-Token Prediction)](https://docs.vllm.ai/en/stable/features/speculative_decoding/mtp/)
+(`qwen3_next_mtp`) is coherent with the NVFP4 checkpoint on Blackwell and improves single-stream decode
+from 65 to 121 tok/s. It is on by default because coding-agent sessions benefit more from lower TPOT during
+active work than from the ~60 s RunAI cold-start win.
 
 `num_speculative_tokens` sweep on real session replay, concurrency 8, 60 s, MTP + fp8 KV + CUDA graphs,
 `max_model_len=81920`:
@@ -109,7 +129,9 @@ than from the ~60 s RunAI cold-start win.
 | 3 | 99 | 0.72 | 264.2 ms | 2.64 s | +24% tok/s, +44% turns/s, -19% TPOT |
 | 4 | 74 | 0.55 | 340.5 ms | 4.01 s | Regresses below 2 |
 
-Verdict: keep on for coding-agent use cases and use `num_speculative_tokens=3`. All three values served the
+Verdict: keep on for low-to-moderate-concurrency coding-agent use cases and use
+`num_speculative_tokens=3`. Under saturated high concurrency, draft/verify overhead can reduce aggregate
+throughput; set `ENABLE_SPEC_DECODE=0` or evaluate dynamic speculative decoding. All three values served the
 real ~73K-token prompts with 0 errors; the vLLM
 0.19.1 long-context crash ([#40756](https://github.com/vllm-project/vllm/issues/40756)) did not reproduce
 on 0.22.
@@ -146,7 +168,8 @@ the Part 3 service YAMLs, so keep it on.
 
 ## TODO
 
-Measure the spec-decode concurrency curve on RTX PRO 6000: sweep concurrency, compare base vs MTP, and find
+Rerun the CUDA-graphs-only benchmark with NVFP4 weights. Measure the NVFP4 spec-decode concurrency curve on
+RTX PRO 6000: sweep concurrency, compare base vs MTP, and find
 where throughput peaks or KV preemption starts. Use that to tune `autoscaling_config.target_ongoing_requests`,
 which is currently a conservative untested `8`.
 
