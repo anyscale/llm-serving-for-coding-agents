@@ -16,7 +16,7 @@ Each row compares one knob off vs on, on the same hardware.
 
 | # | Knob | Off | On | Result | Default |
 |---|---|---|---|---|---|
-| 0 | Model weights | FP8, ~27 GB | NVFP4, ~22 GB | ~5 GB smaller (~19%) | NVFP4 |
+| 0 | `ENABLE_NVFP4_WEIGHTS` | FP8, ~27 GB | NVFP4, ~22 GB | ~5 GB smaller (~19%) | On |
 | 1 | `ENABLE_FAST_MODEL_LOADING` | HF download, ~85 s | RunAI Streamer, ~25 s | 3.4× faster load | Off |
 | 2 | `ENABLE_COMPILE_CACHE` | Recompile, 74.5 s | Prebuilt cache, 8.8 s | 8.5× faster compile | On only without MTP |
 | 3 | `ENABLE_FP8_KV_CACHE` | bf16 KV, ~3.3× concurrency at 256K | fp8 KV, full 256K | 6.53× concurrency | On |
