@@ -5,9 +5,12 @@
 #
 # ── What makes it naive ─────────────────────────────────────────────────────────────
 #
-# GPU: 1× NVIDIA RTX PRO 6000 96GB (g7e.4xlarge, tensor_parallel_size=1) — the SAME shape
-#   Part 3 optimizes on. Part 1 keeps the hardware identical so the "before vs. after" is about
-#   the software optimizations alone, not a GPU swap.
+# GPU choice: 4× L4 (g6.12xlarge), tensor_parallel_size=4
+#   All 4 L4s sit on one node, connected via PCIe (no NVLink). L4 has the lowest memory
+#   bandwidth of serving GPUs (~300 GB/s), and the PCIe interconnect adds communication
+#   overhead between the GPUs. It's a common, widely-available shape — which is exactly why
+#   it makes a realistic "before". (The FP8 weights actually fit on a single bigger GPU —
+#   see Part 3, which moves to 1× RTX PRO 6000 96GB at TP=1.)
 #
 # It's highly UN-optimized on purpose: default engine settings, single replica, no autoscaling.
 # All the tuning lives in Part 3 (see ../part3-optimize/); Part 1 is just the baseline.
@@ -45,19 +48,19 @@ llm_config = LLMConfig(
         model_id="qwen3.6-27b",
         model_source="s3://llm-guide/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/",
     ),
-    # NOTE: accelerator_type is intentionally omitted — Ray Serve LLM's LLMConfig enum rejects
-    # "RTX-PRO-6000". service_naive.yaml pins the g7e RTX PRO 6000 node and the replica's GPU request
-    # places there (same approach as Part 3).
+    accelerator_type="L4",
     deployment_config=dict(
         # Single replica: no autoscaling, no routing.
         autoscaling_config=dict(min_replicas=1, max_replicas=1),
     ),
     runtime_env=dict(env_vars={"HF_HUB_ENABLE_HF_TRANSFER": "1"}),
     engine_kwargs=dict(
-        tensor_parallel_size=1,        # single RTX PRO 6000 96GB (g7e.4xlarge)
+        tensor_parallel_size=4,        # 4x L4 GPUs on one g6.12xlarge (PCIe, no NVLink)
         max_model_len=131072,          # 128K
         gpu_memory_utilization=0.85,
-        # kv_cache_dtype left at the vLLM default — no tuning here; see Part 3.
+        # kv_cache_dtype left at the vLLM default (bf16) — no tuning here; see Part 3.
+        # Validated on this shape: 652,346-token GPU KV cache, 10.38 GiB/GPU,
+        # 4.98x raw concurrency at 128K (vLLM 0.22.0 engine log).
         max_num_seqs=16,
         max_num_batched_tokens=8192,
         enable_prefix_caching=True,
@@ -66,8 +69,9 @@ llm_config = LLMConfig(
         tool_call_parser="qwen3_coder",
         enable_auto_tool_choice=True,
         # Image input ENABLED by default (Qwen3.6-27B is a VLM). Set image:0 for a text-only endpoint.
-        # Verified on this single-GPU 96GB shape in Part 3; if you hit OOM at startup, lower max_pixels
-        # (mm_processor_kwargs) or reduce max_model_len.
+        # NOTE: verified on the Part 3 single-GPU 96GB shape; this 4x L4 (24GB) baseline is tighter and
+        # was not separately load-tested — if you hit OOM at startup, lower max_pixels (mm_processor_kwargs)
+        # or reduce max_model_len.
         limit_mm_per_prompt={"image": 4, "video": 0},
     ),
 )

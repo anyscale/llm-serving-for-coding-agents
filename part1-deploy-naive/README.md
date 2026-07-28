@@ -3,11 +3,11 @@
 Goal: get a working OpenAI-compatible endpoint with the **least** configuration. It's deliberately
 un-optimized — the point is to prove the model serves and to give you a baseline to optimize later.
 
-**What "naive" means here:** 1× RTX PRO 6000 96GB (`g7e.4xlarge`, TP=1), single replica, default engine
-settings — deliberately **highly un-optimized**. It runs on the **same GPU as the optimized Part 3 service**,
-so the "before vs. after" is about the software optimizations alone, not a GPU change. It works; it's just the
-wrong *shape* for a team (≈ one concurrent user, slow cold start) until you add the
-[Part 3](../part3-optimize/) optimizations.
+**What "naive" means here:** 4× L4 (`g6.12xlarge`, TP=4), single replica, default engine settings —
+deliberately **highly un-optimized**. It works; it's just the wrong *shape* for a team (≈ one concurrent
+user, slow cold start), and 4× L4 isn't the right GPU for this model either — the FP8 weights fit on a
+single bigger GPU. [Part 3](../part3-optimize/) fixes both: it moves to 1× RTX PRO 6000 96GB (TP=1) and
+adds the software optimizations.
 
 ## Files
 - `serve_qwen3_6_27b_naive.py` — the Ray Serve LLM app (one `LLMConfig`, built with `build_openai_app`).
@@ -16,7 +16,7 @@ wrong *shape* for a team (≈ one concurrent user, slow cold start) until you ad
 
 ## Deploy
 
-Run it in an **Anyscale workspace** on the image + 1× RTX PRO 6000 96GB (`g7e.4xlarge`) node from **Why this image / GPU** (below).
+Run it in an **Anyscale workspace** on the image + 4× L4 (`g6.12xlarge`) node from **Why this image / GPU** (below).
 Set the two direct-streaming env vars on the workspace (**Dependencies → environment variables**) so
 the Ray Serve controller inherits them at startup:
 
@@ -89,9 +89,27 @@ also exists — handy for a service *without* direct streaming — but this repo
   upgrades the base's vLLM 0.22.0 to **0.23.0** so the native `/v1/messages` endpoint accepts Claude Code's
   request schema. Stock `ray-llm:2.56.0` (vLLM 0.22.0) works for Codex and Cursor, but 0.22.0 rejects Claude
   Code's `system` role; the older GA `ray-llm:2.55.x` ships vLLM 0.18 (too old) and fails to load Qwen3.6.
-- **1× RTX PRO 6000 96GB / TP=1** (`g7e.4xlarge`) — the **same GPU Part 3 optimizes on**. Part 1 uses it as
-  the un-optimized baseline; holding the hardware fixed isolates the tutorial's before/after to the software
-  optimizations, which all live in [Part 3](../part3-optimize/). (Use `g7e.4xlarge` or larger, not
-  `g7e.2xlarge` — its 64 GiB host RAM OOMs while loading the 27B.)
+- **4× L4 / TP=4** (`g6.12xlarge`) — a common, widely-available GPU shape, used here as the baseline. It's
+  not optimal: L4 has the lowest memory bandwidth of the serving GPUs (~300 GB/s) and the 4 cards talk over
+  PCIe with no NVLink, so tensor-parallel comms cost you. The FP8 weights fit on a single bigger GPU, so
+  [Part 3](../part3-optimize/) moves to **1× RTX PRO 6000 96GB** (TP=1) to serve the model's full 256K
+  context in FP8.
+
+## KV cache dtype
+
+`serve_qwen3_6_27b_naive.py` leaves `kv_cache_dtype` at the vLLM default (bf16).
+
+**Validated capacity** (vLLM 0.22.0, TP=4, `gpu_memory_utilization=0.85`, `max_model_len=131072`):
+
+| Metric | Value |
+|---|---|
+| Available KV cache memory | **10.38 GiB / GPU** (~41.5 GiB total) |
+| GPU KV cache size | **652,346 tokens** |
+| Max concurrency @ 128K tokens/request | **4.98×** (raw cache capacity) |
+
+> ⚠️ The 4.98× is the **raw KV cache capacity** (pure storage). Practical concurrency under
+> real serving load will be lower due to decode-phase memory fragmentation, vLLM's safety margins,
+> and PCIe bandwidth saturation between the 4 L4 GPUs (~300 GB/s each). Actual concurrent user
+> capacity should be measured with real workloads.
 
 → Next: **[Part 2 — connect Claude Code / Codex / Cursor](../part2-connect-clients-production/README.md)** (no proxy).

@@ -1,4 +1,4 @@
-# service_naive.yaml — the NAIVE baseline. 1× RTX PRO 6000 96GB, single replica.
+# service_naive.yaml — the NAIVE baseline. 4x L4, single replica.
 # Exposes native /v1/chat/completions + /v1/messages + /v1/responses via DIRECT STREAMING
 # (see ../part2-connect-clients-production/). Direct streaming needs two flags in the Ray Serve
 # *controller's* environment; set them as SERVICE-LEVEL env_vars (below) — Anyscale applies these
@@ -13,10 +13,10 @@ env_vars:
   RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"   # exposes vLLM's native /v1/messages + /v1/responses
 compute_config:
   worker_nodes:
-    # AWS g7e.4xlarge = 1x NVIDIA RTX PRO 6000 96GB (Blackwell SM120), 16 vCPU, 128 GiB host RAM; TP=1.
-    # Host RAM matters: g7e.2xlarge's 64 GiB OOMs loading the 27B; use g7e.4xlarge+. Same GPU as Part 3 —
-    # Part 1 keeps the hardware identical and just leaves off the optimizations.
-    - instance_type: g7e.4xlarge
+    # AWS g6.12xlarge = 4x NVIDIA L4 (24 GB each), 48 vCPU, 192 GiB host RAM; TP=4 over PCIe (no NVLink).
+    # A common, widely-available GPU shape — used here as the un-optimized baseline. Part 3 moves to
+    # 1x RTX PRO 6000 96GB (g7e.4xlarge, TP=1), where the weights fit on a single GPU.
+    - instance_type: g6.12xlarge
       min_nodes: 1
       max_nodes: 1                 # single replica, no autoscaling
 working_dir: .
