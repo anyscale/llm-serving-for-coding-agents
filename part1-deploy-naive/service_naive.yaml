@@ -7,7 +7,7 @@
 # requires HAProxy".) Validated 2026-06-30: all three native endpoints return HTTP 200.
 # Deploy only to compare against the optimized version; not for production.
 name: qwen3-6-27b-fp8-naive
-image_uri: us-docker.pkg.dev/anyscale-workspace-templates/workspace-templates/llm-serving-for-coding-agents:2.57.0   # prebuilt public image: ray-llm 2.57.0 + vLLM 0.25.1, pullable with no creds
+containerfile: Containerfile  # builds ray-llm 2.57.0 (vLLM 0.25.1) at deploy time
 env_vars:
   RAY_SERVE_ENABLE_HA_PROXY: "1"               # cluster-level → reaches the Serve controller (enables HAProxy)
   RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"   # exposes vLLM's native /v1/messages + /v1/responses

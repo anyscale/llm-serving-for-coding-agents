@@ -1,0 +1,8 @@
+# Workspace image for the tutorial (serving side only).
+# ray-llm 2.57.0 ships vLLM 0.25.x, which already accepts Claude Code's /v1/messages schema
+# -- no vLLM pin needed (2.56.0 shipped 0.22.0 and had to be forced to 0.23.0).
+FROM anyscale/ray-llm:2.57.0-py312-cu130
+
+# runai-model-streamer is only needed for Part 3's fast-loading path, but including it here
+# means a single prebuilt image works for both parts without rebuilding.
+RUN pip install --no-cache-dir runai-model-streamer runai-model-streamer-s3

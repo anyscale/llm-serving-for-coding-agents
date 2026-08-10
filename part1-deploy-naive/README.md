@@ -10,7 +10,8 @@ the optimal GPU for this model (the FP8 weights fit on a single bigger GPU; see 
 
 ## Files
 - `serve_qwen3_6_27b_naive.py` — the Ray Serve LLM app (one `LLMConfig`, built with `build_openai_app`).
-- `service_naive.yaml` — the Anyscale Service config (compute + image + import path).
+- `service_naive.yaml` — the Anyscale Service config (compute + Containerfile + import path).
+- `Containerfile` — workspace image: ray-llm 2.57.0 with vLLM 0.25.1 and `runai-model-streamer`.
 - `client.py` — a tiny OpenAI-SDK script to sanity-check the endpoint.
 
 ## Deploy
@@ -83,8 +84,7 @@ also exists — handy for a service *without* direct streaming — but this repo
 
 ## Why this image / GPU
 
-- **Image `us-docker.pkg.dev/anyscale-workspace-templates/workspace-templates/llm-serving-for-coding-agents:2.57.0`**
-  — a prebuilt public image (pullable with no creds) built on `anyscale/ray-llm:2.57.0-py312-cu130`, which
+- **Containerfile** — builds from `anyscale/ray-llm:2.57.0-py312-cu130` at deploy time, which
   ships **vLLM 0.25.1** natively, so the native `/v1/messages` endpoint accepts Claude Code's request schema
   without any vLLM override. Stock `ray-llm:2.56.0` shipped vLLM 0.22.0 which rejected Claude Code's
   `system` role; that is no longer an issue on 2.57.

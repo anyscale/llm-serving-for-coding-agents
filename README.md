@@ -43,24 +43,29 @@ With direct streaming enabled, the deployment exposes each agent's expected API 
 
 - An Anyscale account and the Anyscale CLI (`pip install anyscale`, then `anyscale login`).
 - Claude Code, Codex, and/or Cursor.
-- The prebuilt **public** image `us-docker.pkg.dev/anyscale-workspace-templates/workspace-templates/llm-serving-for-coding-agents:2.57.0`
-  (ray-llm 2.57.0 + **vLLM 0.25.1**), pullable with no creds — Part 1 uses it so Claude Code's `/v1/messages`
+- The **ray-llm 2.57.0** base image (`anyscale/ray-llm:2.57.0-py312-cu130` + **vLLM 0.25.1**),
+  built at deploy time from each part's `Containerfile` — Claude Code's `/v1/messages`
   works natively (vLLM 0.25.1 accepts `system` role in `messages[]` without any override).
 
 ## Quick Start
 
 ### 1. Deploy the model
 
-From a terminal in an **Anyscale workspace** (running the image above):
+From a terminal in an **Anyscale workspace** (ray-llm 2.57.0):
 
 ```bash
 cd part1-deploy-naive
 serve run serve_qwen3_6_27b_naive:app     # serves at http://localhost:8000
 ```
 
-Or deploy as a public Anyscale **Service** (needed for Cursor, and for sharing):
-`anyscale service deploy -f service_naive.yaml`, then grab the URL + token from the console
-(**Services → your service → Query**).
+Or deploy as a public Anyscale **Service** (needed for Cursor, and for sharing). The service YAML
+uses a `containerfile:` so the image builds at deploy time — no prebuilt image needed:
+
+```bash
+anyscale service deploy -f service_naive.yaml --working-dir .
+```
+
+Then grab the URL + token from the console (**Services → your service → Query**).
 
 ### 2. Connect a coding agent
 
