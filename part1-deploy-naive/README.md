@@ -96,7 +96,7 @@ also exists — handy for a service *without* direct streaming — but this repo
 
 `serve_qwen3_6_27b_naive.py` leaves `kv_cache_dtype` at the vLLM default (bf16).
 
-**Validated capacity** (vLLM 0.22.0, TP=4, `gpu_memory_utilization=0.85`, `max_model_len=131072`):
+**Validated capacity** (vLLM 0.25.1, TP=4, `gpu_memory_utilization=0.85`, `max_model_len=131072`):
 
 | Metric | Value |
 |---|---|

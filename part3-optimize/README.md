@@ -98,7 +98,8 @@ anyscale service deploy -f service-work-hours.yaml --working-dir .
 > terminates after ~35 idle minutes before counting on the work-hours numbers.
 
 Then schedule [`warmup.sh`](warmup.sh) for 7 am on weekdays so the first developer never
-waits out the cold start (node provisioning + ~85 s HF weight load + ~9 s compile restore by default):
+waits out the cold start (node provisioning + ~85 s HF weight load + ~75 s cold compile; the compile
+cache cuts that to ~9 s once rebuilt for vLLM 0.25.1 — see `ENABLE_COMPILE_CACHE` above):
 
 - **Anyscale scheduled job** — fill in the service URL and token in
   [`schedule-work-hours-warmup.yaml`](schedule-work-hours-warmup.yaml), then (from `part3-optimize/`)

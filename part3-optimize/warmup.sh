@@ -2,8 +2,8 @@
 # warmup.sh - wake the work-hours service before the workday.
 #
 # Sends one tiny completion and retries until the service answers. A cold start from zero =
-# g7e node provisioning (minutes) + ~85 s HF weight load + ~9 s compile restore, so the default
-# budget is 15 minutes (override with WARMUP_TIMEOUT_S).
+# g7e node provisioning (minutes) + ~85 s HF weight load + ~75 s cold compile (or ~9 s with compile
+# cache once rebuilt for vLLM 0.25.1), so the default budget is 15 minutes (override with WARMUP_TIMEOUT_S).
 #
 # Reads ANYSCALE_BASE_URL and ANYSCALE_API_KEY (the Part 2 service URL + token):
 #   ANYSCALE_BASE_URL  - service URL ending in /v1, no trailing slash

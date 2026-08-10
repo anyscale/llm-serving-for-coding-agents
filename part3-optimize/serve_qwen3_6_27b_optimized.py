@@ -3,9 +3,9 @@
 # OPTIMIZED deployment for 1x NVIDIA RTX PRO 6000 (96 GB Blackwell, AWS g7e.4xlarge), TP=1.
 # Every optimization is a toggle in the CONTROL PANEL below — flip each ON/OFF to see its effect.
 # The defaults are the validated coding-agent setup: FP8 weights + FP8 KV + full 256K context (6.53×
-# concurrency), CUDA graphs, MTP speculative decoding, and the prebuilt compile cache. Fast S3 model
-# loading is kept below as an opt-in cold-start alternative, but it is not the default because it conflicts
-# with MTP on vLLM 0.25.1.
+# concurrency) and CUDA graphs + MTP speculative decoding. The prebuilt compile cache defaults OFF
+# until rebuilt for vLLM 0.25.1. Fast S3 model loading is kept below as an opt-in cold-start
+# alternative, but it conflicts with MTP (vllm#42060).
 # Full measurements + the "knobs that can't be combined" matrix:
 # notes/BENCHMARKS.md / notes/INCOMPATIBILITIES.md.
 

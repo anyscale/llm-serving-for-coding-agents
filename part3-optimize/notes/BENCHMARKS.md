@@ -59,14 +59,16 @@ automatically when spec decode is enabled.
 
 The service restores prebuilt inductor + AOT [torch.compile](https://docs.ray.io/en/latest/serve/llm/user-guides/deployment-initialization.html#torch-compile-cache) caches from S3, so a fresh replica skips compile.
 The cache was rebuilt and validated on 2026-06-30 for vLLM 0.22.0, RTX PRO 6000, FP8 weights + KV, TP=1,
-and 256K context. Rebuild under a new S3 prefix if the image, GPU, or flags change.
+and 256K context. This cache is invalid for vLLM 0.25.1. Rebuild under a new S3 prefix if the image, GPU,
+or flags change (see `serve_qwen3_6_27b_optimized.py` comments for rebuild steps).
 
 | Compile path | Time |
 |---|---|
 | Cold compile | 74.5 s |
 | Prebuilt cache restored | 8.8 s |
 
-Verdict: keep on. Turning it off makes each scale-up compile cold.
+Verdict: keep on once rebuilt. The vLLM 0.22.0 cache is invalid for vLLM 0.25.1 — rebuild first (see
+`serve_qwen3_6_27b_optimized.py` comments for steps). Until rebuilt, each scale-up compiles cold (~75 s).
 
 ## 3. FP8 KV Cache
 
@@ -112,9 +114,8 @@ than from the ~60 s RunAI cold-start win.
 | 4 | 74 | 0.55 | 340.5 ms | 4.01 s | Regresses below 2 |
 
 Verdict: keep on for coding-agent use cases and use `num_speculative_tokens=3`. All three values served the
-real ~73K-token prompts with 0 errors; the vLLM
-0.19.1 long-context crash ([#40756](https://github.com/vllm-project/vllm/issues/40756)) did not reproduce
-on 0.22.
+real ~73K-token prompts with 0 errors on vLLM 0.22.0; still functional on vLLM 0.25.1. The vLLM
+0.19.1 long-context crash ([#40756](https://github.com/vllm-project/vllm/issues/40756)) did not reproduce.
 
 Agent traffic is often prefill-heavy: 20K–74K-token prompts with short outputs. That means MTP will not erase
 prefill latency on large tool-use turns, but it still improves TPOT and turns/s on the measured coding-agent
