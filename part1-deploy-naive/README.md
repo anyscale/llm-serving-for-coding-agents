@@ -83,11 +83,11 @@ also exists — handy for a service *without* direct streaming — but this repo
 
 ## Why this image / GPU
 
-- **Image `us-docker.pkg.dev/anyscale-workspace-templates/workspace-templates/llm-serving-for-coding-agents:2.56.0`**
-  — a prebuilt public image (pullable with no creds) built on `anyscale/ray-llm:2.56.0-py312-cu130`, which
-  upgrades the base's vLLM 0.22.0 to **0.23.0** so the native `/v1/messages` endpoint accepts Claude Code's
-  request schema. Stock `ray-llm:2.56.0` (vLLM 0.22.0) works for Codex and Cursor, but 0.22.0 rejects Claude
-  Code's `system` role; the older GA `ray-llm:2.55.x` ships vLLM 0.18 (too old) and fails to load Qwen3.6.
+- **Image `us-docker.pkg.dev/anyscale-workspace-templates/workspace-templates/llm-serving-for-coding-agents:2.57.0`**
+  — a prebuilt public image (pullable with no creds) built on `anyscale/ray-llm:2.57.0-py312-cu130`, which
+  ships **vLLM 0.25.1** natively, so the native `/v1/messages` endpoint accepts Claude Code's request schema
+  without any vLLM override. Stock `ray-llm:2.56.0` shipped vLLM 0.22.0 which rejected Claude Code's
+  `system` role; that is no longer an issue on 2.57.
 - **4× L4 / TP=4** — a common, widely-available GPU shape (`g6.12xlarge`) used here as the baseline. It's
   not optimal — the FP8 weights fit on a single bigger GPU; an optimized variant moves to **1× RTX PRO
   6000 96GB** (TP=1) to serve the model's full 256K context in FP8.

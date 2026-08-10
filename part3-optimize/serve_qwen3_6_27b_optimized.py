@@ -5,7 +5,7 @@
 # The defaults are the validated coding-agent setup: FP8 weights + FP8 KV + full 256K context (6.53×
 # concurrency), CUDA graphs, MTP speculative decoding, and the prebuilt compile cache. Fast S3 model
 # loading is kept below as an opt-in cold-start alternative, but it is not the default because it conflicts
-# with MTP on vLLM 0.22.0.
+# with MTP on vLLM 0.25.1.
 # Full measurements + the "knobs that can't be combined" matrix:
 # notes/BENCHMARKS.md / notes/INCOMPATIBILITIES.md.
 
@@ -22,8 +22,10 @@
 ENABLE_FAST_MODEL_LOADING = False
 
 # (2) COMPILE CACHE — download the prebuilt inductor + AOT torch.compile caches from S3 so a cold replica
-#     skips the whole compile (validated 74.5s -> 8.8s).  OFF -> each fresh replica compiles cold.
-ENABLE_COMPILE_CACHE = True
+#     skips the whole compile (validated 74.5s -> 8.8s on vLLM 0.22.0).  OFF -> each fresh replica
+#     compiles cold. ⚠ DEFAULTS TO FALSE for ray-llm 2.57 / vLLM 0.25.1 until caches are rebuilt —
+#     see the S3 path comments above for rebuild instructions.
+ENABLE_COMPILE_CACHE = False
 
 # (3) FP8 KV CACHE — store K/V in fp8: ~half the KV memory, which is what lets the full 256K context fit
 #     (6.53× concurrency on 96GB).  OFF -> default bf16 KV; 256K won't fit, so lower max_model_len.
@@ -37,6 +39,7 @@ ENABLE_CUDA_GRAPHS = True
 #     ~1.9x decode on RTX PRO 6000, coherent output (the #40880 degenerate-output bug does NOT occur on
 #     Blackwell). ⚠ Needs the HF loader, so it turns FAST MODEL LOADING off (vllm#42060): you trade the
 #     fast S3 cold-start for faster multi-token generation during agent work. See notes/BENCHMARKS.md.
+#     (Still not resolved on vLLM 0.25.1.)
 ENABLE_SPEC_DECODE = True
 
 # (6) PREFIX-AWARE ROUTING — send a session's turns to the replica that cached its prefix. Keep OFF for the
@@ -44,6 +47,7 @@ ENABLE_SPEC_DECODE = True
 #     harness context, so round-robin still benefits from each replica's local vLLM prefix cache. Consider
 #     enabling only for multi-user traffic with diverse byte-stable prefixes, then tune the imbalance knobs
 #     so affinity does not overload one replica. Only matters with max_replicas > 1.
+#     On ray-llm 2.57+ the stock PrefixCacheAffinityRouter works with direct streaming natively (ray#64328).
 ENABLE_PREFIX_ROUTING = False
 
 # DIRECT STREAMING is REQUIRED for this demo (Parts 1 & 2 connect Claude Code / Codex / Cursor straight to
@@ -70,12 +74,16 @@ HF_SOURCE  = "Qwen/Qwen3.6-27B-FP8"                                          # p
 S3_WEIGHTS = "s3://llm-guide/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/"    # for RunAI Streamer
 
 # Compile-cache locations (used only when ENABLE_COMPILE_CACHE). The S3 PREFIXES ENCODE the exact stack a
-# torch.compile cache is keyed to (vLLM version + GPU arch + flags); these were rebuilt + validated
-# 2026-06-30 on vLLM 0.22.0 / RTX PRO 6000 (SM120) / FP8 weights+KV / TP=1 / 256K. vLLM caches in two dirs
-# (inductor + AOT), restored to the two local paths below. Change the image/GPU/flags -> rebuild + new prefix.
-COMPILE_CACHE_S3      = "s3://llm-guide/data/ray-serve-llm/compiled-cache/qwen3.6-27b/vllm0.22.0-rtxpro6000-sm120-fp8-tp1-256k/"
+# torch.compile cache is keyed to (vLLM version + GPU arch + flags).
+# ⚠ CURRENT: the paths below point to vLLM 0.22.0 caches which are INVALID for vLLM 0.25.1 (ray-llm 2.57).
+#   Rebuild under a new S3 prefix before enabling compile cache on 2.57:
+#     1. Deploy once with ENABLE_COMPILE_CACHE=False to cold-compile on vLLM 0.25.1
+#     2. Copy the compiled cache from COMPILE_CACHE_DIR + COMPILE_CACHE_AOT_DIR to a new S3 prefix
+#     3. Update the two *_S3 paths below (e.g. vllm0.25.1-rtxpro6000-sm120-fp8-tp1-256k/)
+#     4. Set ENABLE_COMPILE_CACHE=True
+COMPILE_CACHE_S3      = "s3://llm-guide/data/ray-serve-llm/compiled-cache/qwen3.6-27b/vllm0.25.1-rtxpro6000-sm120-fp8-tp1-256k/"  # REBUILD NEEDED
 COMPILE_CACHE_DIR     = "/home/ray/.cache/vllm/torch_compile_cache/qwen3.6-27b"
-COMPILE_CACHE_AOT_S3  = "s3://llm-guide/data/ray-serve-llm/compiled-cache/qwen3.6-27b-aot/vllm0.22.0-rtxpro6000-sm120-fp8-tp1-256k/"
+COMPILE_CACHE_AOT_S3  = "s3://llm-guide/data/ray-serve-llm/compiled-cache/qwen3.6-27b-aot/vllm0.25.1-rtxpro6000-sm120-fp8-tp1-256k/"  # REBUILD NEEDED
 COMPILE_CACHE_AOT_DIR = "/home/ray/.cache/vllm/torch_compile_cache/torch_aot_compile/d2d5f6429cf68f56db205af1548136d88bf1d13247d0d6a24209dbe6420ebc9b"
 
 # ── Build the engine config from the toggles ─────────────────────────────────
@@ -96,7 +104,7 @@ engine_kwargs = dict(
     # For image-heavy prompts, watch max_pixels (mm_processor_kwargs) / KV headroom.
     limit_mm_per_prompt={"image": 4, "video": 0},
 )
-# Attention backend: intentionally unset — on RTX PRO 6000 (SM120) + fp8 KV, vLLM 0.22 auto-selects
+# Attention backend: intentionally unset — on RTX PRO 6000 (SM120) + fp8 KV, vLLM 0.25.1 auto-selects
 # FlashInfer (its strongest Blackwell attention kernel); forcing VLLM_ATTENTION_BACKEND=FLASHINFER is a no-op.
 
 # (1) Fast model loading
@@ -119,7 +127,8 @@ if ENABLE_SPEC_DECODE:
     model_source = HF_SOURCE
     # num_speculative_tokens=3 is the measured sweet spot on the real agent replay: +24% out tok/s,
     # +44% turns/s, -19% TPOT vs 2. 4 REGRESSES below 2 (draft/verify overhead > acceptance gain).
-    # See notes/BENCHMARKS.md knob 5. (MTP served the traces' ~73K-tok prompts with 0 errors on vLLM 0.22.)
+    # See notes/BENCHMARKS.md knob 5. (MTP served the traces' ~73K-tok prompts with 0 errors on vLLM 0.22.0,
+    # still functional on vLLM 0.25.1.)
     engine_kwargs["speculative_config"] = {"method": "qwen3_next_mtp", "num_speculative_tokens": 3}
 
 # (2) Compile cache: point vLLM at the cache_dir + download both caches from S3 before engine init.
@@ -157,12 +166,11 @@ deployment_config = dict(
 if ENABLE_PREFIX_ROUTING:
     # Tune these thresholds on real traffic. Too much affinity can overload the one replica with the closest
     # prefix cache, even when another replica has spare capacity.
-    # Direct streaming is always on here, and the stock PrefixCacheAffinityRouter HANGS under it (it can't
-    # read the raw body the direct-streaming ingress forwards). So use the DirectStreamingPrefixCacheRouter
-    # subclass in direct_streaming_prefix_router.py, which parses that body. Upstream fix:
-    # https://github.com/ray-project/ray/pull/64328 (lands in Ray Serve LLM 2.57) — once you're on
-    # ray-llm >= 2.57 you can drop the subclass and use the stock PrefixCacheAffinityRouter directly.
-    from direct_streaming_prefix_router import DirectStreamingPrefixCacheRouter as _PrefixRouter
+    # On ray-llm 2.57+ the stock PrefixCacheAffinityRouter works with direct streaming natively
+    # (fixed by ray#64328). No custom router subclass needed.
+    from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (
+        PrefixCacheAffinityRouter as _PrefixRouter,
+    )
     deployment_config["request_router_config"] = dict(
         request_router_class=_PrefixRouter,
         request_router_kwargs=dict(imbalanced_threshold=5, match_rate_threshold=0.15),

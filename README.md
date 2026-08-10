@@ -43,9 +43,9 @@ With direct streaming enabled, the deployment exposes each agent's expected API 
 
 - An Anyscale account and the Anyscale CLI (`pip install anyscale`, then `anyscale login`).
 - Claude Code, Codex, and/or Cursor.
-- The prebuilt **public** image `us-docker.pkg.dev/anyscale-workspace-templates/workspace-templates/llm-serving-for-coding-agents:2.56.0`
-  (ray-llm 2.56.0 + **vLLM 0.23.0**), pullable with no creds — Part 1 uses it so Claude Code's `/v1/messages`
-  works (stock `ray-llm:2.56.0` ships vLLM 0.22.0, which rejects a `system` role inside `messages[]`).
+- The prebuilt **public** image `us-docker.pkg.dev/anyscale-workspace-templates/workspace-templates/llm-serving-for-coding-agents:2.57.0`
+  (ray-llm 2.57.0 + **vLLM 0.25.1**), pullable with no creds — Part 1 uses it so Claude Code's `/v1/messages`
+  works natively (vLLM 0.25.1 accepts `system` role in `messages[]` without any override).
 
 ## Quick Start
 

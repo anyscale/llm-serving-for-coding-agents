@@ -15,7 +15,7 @@
 #
 # Cold start: weights downloaded from S3 every time (~85 s).
 #
-# Compilation: no compile cache, so each fresh replica recompiles (~90–137 s).
+# Compilation: no compile cache, so each fresh replica recompiles (~90–137 s on vLLM 0.25.1).
 #
 # Missing: no speculative decoding, no prefix-aware routing.
 #
@@ -42,9 +42,9 @@
 # so the app fails with "ingress_request_router requires HAProxy." Anyscale applies
 # cluster-level env vars across the cluster, so the controller inherits them.
 #
-# Safe here because there's no custom request router: direct streaming conflicts with
-# the stock PrefixCacheAffinityRouter, but the single-replica default RoundRobinRouter
-# used here is fine.
+# Safe here because there's no custom request router: direct streaming works with all routers
+# on ray-llm 2.57+ (fixed by ray#64328), and the single-replica default RoundRobinRouter used
+# here is fine regardless.
 from ray.serve.llm import LLMConfig, build_openai_app
 
 llm_config = LLMConfig(
@@ -63,7 +63,7 @@ llm_config = LLMConfig(
         max_model_len=131072,          # 128K
         gpu_memory_utilization=0.85,   
         # kv_cache_dtype left at the default (bf16). GPU KV cache: 652,346 tokens,
-        # 10.38 GiB/GPU, 4.98× raw concurrency at 128K. (vLLM 0.22.0 log output.)
+        # 10.38 GiB/GPU, 4.98× raw concurrency at 128K. (vLLM 0.25.1 log output on ray-llm 2.57.0.)
         max_num_seqs=16,
         max_num_batched_tokens=8192,
         enable_prefix_caching=True,

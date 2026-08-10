@@ -4,7 +4,8 @@ These measurements map to the `ENABLE_*` control panel in
 [`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py).
 
 Unless noted, results are from 1× RTX PRO 6000 (`g7e.4xlarge`, 96 GB, SM120), TP=1, vLLM 0.22.0
-(`ray-llm:2.56.0`). Anything not yet remeasured on the Pro 6000 is listed in [TODO](#todo).
+(`ray-llm:2.56.0`). These numbers have not been remeasured on vLLM 0.25.1 (`ray-llm:2.57.0`) yet.
+Anything not yet remeasured on the Pro 6000 is listed in [TODO](#todo).
 
 Note on context length: the decode/throughput numbers were measured at `max_model_len=81920` with real
 prompts up to ~73K tokens. Per-token rates are largely insensitive to the `max_model_len` cap, but treat the
@@ -17,18 +18,19 @@ Each row compares one knob off vs on, on the same hardware.
 | # | Knob | Off | On | Result | Default |
 |---|---|---|---|---|---|
 | 1 | `ENABLE_FAST_MODEL_LOADING` | HF download, ~85 s | RunAI Streamer, ~25 s | 3.4× faster load | Off |
-| 2 | `ENABLE_COMPILE_CACHE` | Recompile, 74.5 s | Prebuilt cache, 8.8 s | 8.5× faster compile | On |
+| 2 | `ENABLE_COMPILE_CACHE` | Recompile, 74.5 s | Prebuilt cache, 8.8 s | 8.5× faster compile | Off (vLLM 0.22.0 caches invalid on 0.25.1) |
 | 3 | `ENABLE_FP8_KV_CACHE` | bf16 KV, ~3.3× concurrency at 256K | fp8 KV, full 256K | 6.53× concurrency | On |
 | 4 | `ENABLE_CUDA_GRAPHS` | Eager, 15.9 tok/s | Graphs, 45.6 tok/s | 2.87× decode | On |
 | 5 | `ENABLE_SPEC_DECODE` | Base, 45.6 tok/s | MTP, 86.4 tok/s | 1.89× decode | On |
 
 Spec decode is on by default because the tutorial targets coding-agent traffic, where lower TPOT during
 multi-token generation matters more than shaving about a minute from cold weight load. Fast model loading is
-kept as an opt-in because RunAI Streamer and MTP cannot currently coexist on vLLM 0.22.0
+kept as an opt-in because RunAI Streamer and MTP cannot currently coexist on vLLM 0.25.1
 ([vllm#42060](https://github.com/vllm-project/vllm/issues/42060)). Prefix routing is off by default because the
 single-user replay data in this tutorial does not need replica affinity; see [Prefix Routing](#6-prefix-routing)
-for when to opt in. The built-in router also needs the ray-llm 2.57 direct-streaming fix
-([ray#64328](https://github.com/ray-project/ray/pull/64328)). See
+for when to opt in. The built-in router works with direct streaming on ray-llm 2.57+ (fixed by
+[ray#64328](https://github.com/ray-project/ray/pull/64328)). The compile cache defaults to OFF on ray-llm 2.57
+until caches are rebuilt for vLLM 0.25.1. See
 [`INCOMPATIBILITIES.md`](INCOMPATIBILITIES.md) for combinations that cannot coexist.
 
 ## Workloads
@@ -134,9 +136,9 @@ different system prompts, skill sets, memory blocks, RAG documents, or agent har
 `imbalanced_threshold` and `match_rate_threshold` against real traffic. The goal is to improve prefix-cache
 reuse without sending too much work to one replica just because it already has a similar prefix cached.
 
-Under direct streaming, the stock router hangs on ray-llm 2.56. If this knob is enabled, the service uses
-`DirectStreamingPrefixCacheRouter` until [ray#64328](https://github.com/ray-project/ray/pull/64328) lands in
-ray-llm 2.57.
+Under direct streaming, the stock router worked on ray-llm 2.57+ (fixed by
+[ray#64328](https://github.com/ray-project/ray/pull/64328)). On older ray-llm versions (2.56.x), it hung and
+required the `DirectStreamingPrefixCacheRouter` adapter (now deprecated).
 
 ## Direct Streaming
 
@@ -149,6 +151,9 @@ the Part 3 service YAMLs, so keep it on.
 Measure the spec-decode concurrency curve on RTX PRO 6000: sweep concurrency, compare base vs MTP, and find
 where throughput peaks or KV preemption starts. Use that to tune `autoscaling_config.target_ongoing_requests`,
 which is currently a conservative untested `8`.
+
+Remeasure all knob benchmarks on vLLM 0.25.1 (`ray-llm:2.57.0`). The existing numbers are from vLLM 0.22.0
+(`ray-llm:2.56.0`). Rebuild the compile cache for vLLM 0.25.1 before re-enabling `ENABLE_COMPILE_CACHE`.
 
 Raw per-run JSON and load-test harnesses (`serve_bench_router_rtx.py`, `ds_bench_agent*.py`,
 `gen_fair_trace.py`) live in the Anyscale build workspace, not this repo.

@@ -4,13 +4,16 @@ Read this before changing toggles in
 [`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py).
 
 These findings were measured or root-caused on `qwen3.6-27b` FP8, 1× RTX PRO 6000 96 GB
-(`g7e.4xlarge`), `ray-llm:2.56.0-py312-cu130`, and vLLM 0.22.0. Full numbers are in
+(`g7e.4xlarge`), `ray-llm:2.56.0-py312-cu130`, and vLLM 0.22.0. The service now runs on
+`ray-llm:2.57.0-py312-cu130` with vLLM 0.25.1 — the resolved issues below are fixed in 2.57,
+while the RunAI/MTP conflict still applies. Full numbers are in
 [`BENCHMARKS.md`](BENCHMARKS.md).
 
 ## Claude Code Compatibility
 
-The Ray LLM 2.56.0 base image's vLLM 0.22.0 rejects Claude Code's current Messages payload. Keep the
-Part 3 `Containerfile` override at vLLM 0.23.0 or newer; vLLM 0.23.0 was validated with Claude Code 2.1.201.
+RESOLVED on ray-llm 2.57: the base image ships vLLM 0.25.1 which natively accepts Claude Code's
+Messages payload (including `system` role in `messages[]`). No vLLM override is needed in the
+Containerfile. (Previously, ray-llm 2.56.0 shipped vLLM 0.22.0 which rejected it.)
 
 ## Hard Incompatibilities
 
@@ -37,20 +40,22 @@ The control panel automatically disables `ENABLE_FAST_MODEL_LOADING` when `ENABL
 MTP + CUDA graphs is coherent on RTX PRO 6000. The older `#40880` degenerate-output issue does not occur
 here, so CUDA graphs can stay on with MTP.
 
-### 2. Direct Streaming and Built-In Prefix Routing
+### 2. Direct Streaming and Built-In Prefix Routing (RESOLVED in 2.57)
 
-Direct streaming plus Ray's built-in `PrefixCacheAffinityRouter` hangs on ray-llm 2.56. The direct-streaming
-ingress puts the raw body in `pending_request.kwargs["request_body"]`, but that router only checks
-`args`, so prefix routing never sees the request body correctly.
+RESOLVED on ray-llm 2.57: [ray#64328](https://github.com/ray-project/ray/pull/64328) fixed the direct-streaming
+routing so `PrefixCacheAffinityRouter` now works natively with direct streaming. The ingress correctly parses
+the request body for body-aware routers. No custom router subclass is needed.
 
-Options:
+On ray-llm 2.56.x (legacy): the direct-streaming ingress put the raw body in
+`pending_request.kwargs["request_body"]`, but the stock router only checked `args`, so prefix routing never
+saw the request body correctly. The workaround was `DirectStreamingPrefixCacheRouter` (now deprecated).
+
+Options on ray-llm 2.57+:
 
 - Use the default `RoundRobinRouter` for the single-user replay data in this tutorial.
-- If you opt into prefix routing, use `DirectStreamingPrefixCacheRouter`.
-- On Ray Serve LLM 2.57 or newer, use Ray's built-in router after
-  [ray#64328](https://github.com/ray-project/ray/pull/64328) lands.
+- If you opt into prefix routing, use the stock `PrefixCacheAffinityRouter` directly — it just works.
 
-In this tutorial, direct streaming is always on. That is why prefix routing, when enabled, uses the subclass.
+In this tutorial, direct streaming is always on, and prefix routing uses the stock router when enabled.
 
 ## What Composes
 

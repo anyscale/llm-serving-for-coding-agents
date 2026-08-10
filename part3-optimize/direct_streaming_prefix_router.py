@@ -1,5 +1,13 @@
 # direct_streaming_prefix_router.py
 #
+# DEPRECATED — no longer needed on ray-llm 2.57+.
+#
+# The upstream fix [ray#64328](https://github.com/ray-project/ray/pull/64328) landed in Ray 2.57.0,
+# so `PrefixCacheAffinityRouter` now works with direct streaming natively. On ray-llm 2.57+, use the
+# stock router directly; this file is kept for historical reference only.
+#
+# --- Original description (for context) ---
+#
 # Make PrefixCacheAffinityRouter actually do prefix affinity UNDER DIRECT STREAMING on ray-llm 2.56.0.
 #
 # The problem (verified against the pinned ray source): under direct streaming the ingress passes the raw
@@ -20,7 +28,7 @@
 # which is this tutorial's default anyway). Upstream fix https://github.com/ray-project/ray/pull/64328
 # lands in Ray Serve LLM 2.57 — on >= 2.57 DELETE this file and use the stock PrefixCacheAffinityRouter.
 #
-# Usage: set request_router_class=DirectStreamingPrefixCacheRouter in deployment_config.request_router_config.
+# Usage (legacy ray-llm 2.56.x only): set request_router_class=DirectStreamingPrefixCacheRouter in deployment_config.request_router_config.
 import json
 from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (
     PrefixCacheAffinityRouter,
