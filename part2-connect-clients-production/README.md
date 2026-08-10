@@ -42,9 +42,8 @@ export BRAVE_API_KEY=…        # web search via the local Brave MCP
 ```
 
 Both scripts take `ANYSCALE_BASE_URL` / `ANYSCALE_API_KEY` from your environment, prompting for either
-one that isn't set, and pin the model to `qwen3.6-27b`. Claude Code's `/v1/messages` needs the service
-on **vLLM ≥ 0.23** (0.22 rejects a `system` role inside `messages[]`). The ray-llm 2.57 base ships
-vLLM 0.25.1, which satisfies this natively.
+one that isn't set, and pin the model to `qwen3.6-27b`. Claude Code's `/v1/messages` needs **vLLM ≥ 0.23**
+(satisfied by the ray-llm 2.57 base which ships vLLM 0.25.1).
 
 ## Cursor (GUI)
 

@@ -68,7 +68,8 @@ or flags change (see `serve_qwen3_6_27b_optimized.py` comments for rebuild steps
 | Prebuilt cache restored | 8.8 s |
 
 Verdict: keep on once rebuilt. The vLLM 0.22.0 cache is invalid for vLLM 0.25.1 — rebuild first (see
-`serve_qwen3_6_27b_optimized.py` comments for steps). Until rebuilt, each scale-up compiles cold (~75 s).
+`serve_qwen3_6_27b_optimized.py` comments for steps). Until rebuilt, each scale-up compiles cold
+(~75 s, estimated from vLLM 0.22.0's measured 74.5 s — should be similar but not yet revalidated on 0.25.1).
 
 ## 3. FP8 KV Cache
 

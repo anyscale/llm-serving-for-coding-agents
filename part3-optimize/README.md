@@ -54,8 +54,6 @@ pin the `g7e` node instead.
 - `service-always-on.yaml`, `service-work-hours.yaml`, and `schedule-work-hours-warmup.yaml` — Anyscale entry points.
 - `warmup.sh` — weekday morning warmup helper for work-hours mode.
 - `notes/` — benchmark data, cost estimates, and compatibility notes.
-- `direct_streaming_prefix_router.py` — **DEPRECATED on ray-llm 2.57+**. Kept for reference only; the stock
-  `PrefixCacheAffinityRouter` now works with direct streaming natively (fixed by ray#64328 in 2.57).
 - `Containerfile` — `ray-llm:2.57.0` with vLLM 0.25.1 (native) and `runai-model-streamer`.
 
 ## Deploy
