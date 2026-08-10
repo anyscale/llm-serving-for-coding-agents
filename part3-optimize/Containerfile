@@ -1,16 +1,10 @@
-# Containerfile — production image for the optimized Qwen3.6-27B-FP8 service.
-# Adds the optional RunAI Model Streamer (#1) to the ray-llm base (it is NOT in the base image).
-# The torch.compile cache (#2) needs no extra package — CloudDownloader ships with ray-llm,
-# and the shared-VLLM_CACHE_ROOT pattern needs nothing at all.
-#
-# PIN the base for production: the torch.compile cache is keyed to the exact vLLM
-# version/GPU/flags, so a drifting base silently invalidates it. For a fully immutable
-# build, replace the tag below with its digest:
-#   FROM anyscale/ray-llm@sha256:<digest>
+# Workspace image for the Summit 2026 coding-agent training (serving side only).
 FROM anyscale/ray-llm:2.57.0-py312-cu130
 
-# Ray 2.57 ships vLLM 0.25.1, which fully supports Claude Code's /v1/messages schema (system role
-# in messages[]), Codex /v1/responses, and Cursor /v1/chat/completions — no vLLM override needed.
-
-# [#1] Optional RunAI Model Streamer for S3 -> GPU weight streaming (validated 23.9s @ 1.2 GiB/s).
+# 2.57.0 ships vLLM 0.25.x, which already accepts Claude Code's /v1/messages schema -- no vLLM pin
+# needed (2.56.0 shipped 0.22.0 and had to be forced to 0.23.0). runai is for Part 3.
 RUN pip install --no-cache-dir runai-model-streamer runai-model-streamer-s3
+
+# Direct streaming: exposes /v1/messages + /v1/responses + /v1/chat/completions.
+ENV RAY_SERVE_ENABLE_HA_PROXY=1 \
+    RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING=1
