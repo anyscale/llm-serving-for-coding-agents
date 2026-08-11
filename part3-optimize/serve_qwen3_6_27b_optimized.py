@@ -227,11 +227,9 @@ if ENABLE_PREFIX_ROUTING:
     # (it couldn't read the raw body the direct-streaming ingress forwards) and this repo shipped a
     # DirectStreamingPrefixCacheRouter subclass to work around it. ray#64328 fixed the ingress in 2.57, so
     # the stock router is used directly and the subclass is gone. On ray-llm < 2.57, restore that adapter.
-    # Note: this router has no public export, so the import path is a Ray internal and may move between
-    # releases. Verified present in ray-llm 2.57.0.
-    from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (
-        PrefixCacheAffinityRouter as _PrefixRouter,
-    )
+    # ray.serve.llm.request_router is the public export (@PublicAPI, beta in 2.57.0) — prefer it over the
+    # ray.llm._internal path it wraps.
+    from ray.serve.llm.request_router import PrefixCacheAffinityRouter as _PrefixRouter
     deployment_config["request_router_config"] = dict(
         request_router_class=_PrefixRouter,
         request_router_kwargs=dict(imbalanced_threshold=5, match_rate_threshold=0.15),
