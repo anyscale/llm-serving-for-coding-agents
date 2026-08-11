@@ -20,8 +20,7 @@ env_vars:
   DOWNSCALE_DELAY_S: "1800"  # 30 min idle before scaling down, so a lunch-break lull != a cold start
 compute_config:
   # Uncomment to improve spot availability by drawing from every AZ in the region:
-  # flags:
-  #   enable_cross_zone_scaling: true
+  # enable_cross_zone_scaling: true
   worker_nodes:
     # AWS g7e.4xlarge = 1x NVIDIA RTX PRO 6000 96GB (Blackwell SM120), 16 vCPU, 128 GiB host RAM; TP=1.
     - instance_type: g7e.4xlarge
