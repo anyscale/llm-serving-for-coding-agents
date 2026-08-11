@@ -87,7 +87,7 @@ Measured performance gains and options include:
 
 - **MTP speculative decoding** — default for coding-agent traffic; improves decode **1.89×**, from 45.6 tok/s to 86.4 tok/s.
 - **RunAI Streamer** — optional cold-start path; reduces cold weight-load time **3.4×**, from ~85 s to ~25 s, but cannot be combined with MTP ([vllm#42060](https://github.com/vllm-project/vllm/issues/42060), still open).
-- **Torch.compile cache** — reduces compile startup time **8.5×**, from 74.5 s to 8.8 s, on the no-MTP path only. Off by default until the cache is rebuilt for vLLM 0.25.1.
+- **Torch.compile cache** — reduces compile startup time **8.0×**, from 48.5 s to 6.0 s on vLLM 0.25.1, on the no-MTP path only.
 - **FP8 KV cache** — doubles 256K-context KV concurrency, from ~3.27× to 6.53×.
 - **CUDA graphs** — improves decode throughput **2.87×**, from 15.9 tok/s to 45.6 tok/s.
 - **Autoscale** — grows serving capacity from 1 to 4 replicas with round-robin routing.

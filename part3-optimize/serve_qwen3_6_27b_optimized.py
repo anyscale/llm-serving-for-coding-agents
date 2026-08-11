@@ -10,11 +10,12 @@
 # Full measurements + the "knobs that can't be combined" matrix:
 # notes/BENCHMARKS.md / notes/INCOMPATIBILITIES.md.
 #
-# STACK: ray-llm 2.57.0 / vLLM 0.25.1 (Containerfile). Everything below was measured or verified on
-# vLLM 0.22.0-0.23.0 under ray-llm 2.56.0 and has NOT been re-validated on 0.25.1 — see
-# notes/BENCHMARKS.md "Revalidation on vLLM 0.25.1" for what to re-run. The one behavior change the
-# upgrade brings is the prefix router (knob 6): ray#64328 makes the stock router work under direct
-# streaming, so the DirectStreamingPrefixCacheRouter adapter this repo carried is gone.
+# STACK: ray-llm 2.57.0 / vLLM 0.25.1 (Containerfile). Except for the compile cache (knob 2, rebuilt and
+# re-measured on 0.25.1), the numbers below were measured on vLLM 0.22.0-0.23.0 under ray-llm 2.56.0 and
+# have NOT been re-validated — see notes/BENCHMARKS.md "Revalidation on vLLM 0.25.1" for what to re-run.
+# The one behavior change the upgrade brings is the prefix router (knob 6): ray#64328 makes the stock
+# router work under direct streaming, so the DirectStreamingPrefixCacheRouter adapter this repo carried
+# is gone.
 
 import os
 
@@ -37,13 +38,9 @@ ENABLE_NVFP4_WEIGHTS = True
 ENABLE_FAST_MODEL_LOADING = False
 
 # (2) COMPILE CACHE — download the prebuilt inductor + AOT torch.compile caches from S3 so a cold replica
-#     skips the whole compile (validated 74.5s -> 8.8s). The cache is keyed to the no-MTP text graph; MTP
-#     and image-heavy graphs differ, so those cold-compile regardless. OFF -> compile cold.
-#     ⚠ OFF on ray-llm 2.57.0: the published cache was built on vLLM 0.23.0 and a torch.compile cache is
-#     keyed to the exact vLLM version, so the 0.25.1 engine won't match it — you'd pay the download and
-#     still compile cold. Rebuild it on 0.25.1 (recipe at COMPILE_CACHE_S3 below), then flip this to True.
-#     This only affects the no-MTP path: with the default MTP on, the cache is disabled anyway.
-ENABLE_COMPILE_CACHE = False
+#     skips the whole compile (measured 48.5s -> 6.0s on vLLM 0.25.1). The cache is keyed to the no-MTP
+#     text graph; MTP and image-heavy graphs differ, so those cold-compile regardless. OFF -> compile cold.
+ENABLE_COMPILE_CACHE = True
 
 # (3) FP8 KV CACHE — store K/V in fp8: ~half the KV memory, which is what lets the full 256K context fit
 #     (6.53× concurrency on 96GB).  OFF -> default bf16 KV; 256K won't fit, so lower max_model_len.
@@ -94,8 +91,7 @@ if ENABLE_SPEC_DECODE:
     print(f"[config] {WEIGHT_FORMAT} weights + MTP. MTP has no prebuilt compile cache -> cold compile. "
           "For high concurrency set ENABLE_SPEC_DECODE=0.")
 else:
-    cache_status = ("using the prebuilt NVFP4 compile cache" if ENABLE_COMPILE_CACHE
-                    else "compiling cold (ENABLE_COMPILE_CACHE is off until the cache is rebuilt on vLLM 0.25.1)")
+    cache_status = "using the prebuilt NVFP4 compile cache" if ENABLE_COMPILE_CACHE else "compiling cold"
     print(f"[config] {WEIGHT_FORMAT} weights, no MTP (high concurrency) -> {cache_status}.")
 
 from ray.serve.llm import LLMConfig, build_openai_app
@@ -112,24 +108,28 @@ else:
     S3_WEIGHTS = "s3://llm-guide/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/"
     WEIGHT_QUANTIZATION = None  # let vLLM infer the checkpoint's FP8 quantization metadata
 
-# NVFP4 compile cache (built + uploaded 2026-07-23; keyed to vLLM 0.23.0 / RTX PRO 6000 (SM120) / NVFP4
+# NVFP4 compile cache (rebuilt + uploaded 2026-08-10; keyed to vLLM 0.25.1 / RTX PRO 6000 (SM120) / NVFP4
 # weights + FP8 KV / TP=1 / 256K, no-MTP text graph). Used when ENABLE_COMPILE_CACHE and MTP is off. vLLM
 # caches in two dirs (inductor + AOT), restored to the two local paths below. Rebuild + new prefix if the
 # image/GPU/flags (or compile graph, e.g. image input) change.
 #
-# ⚠ These are the vLLM 0.23.0 prefixes and they do NOT match the 0.25.1 engine in ray-llm 2.57.0 — that's
-# why ENABLE_COMPILE_CACHE defaults to False. To rebuild for 0.25.1:
-#   1. Deploy once on 2.57.0 with ENABLE_COMPILE_CACHE=False and ENABLE_SPEC_DECODE=0 (no-MTP text graph),
-#      and let the replica compile cold.
-#   2. Copy COMPILE_CACHE_DIR and COMPILE_CACHE_AOT_DIR off the replica to a new S3 prefix, naming it for
-#      the new stack: .../vllm0.25.1-rtxpro6000-sm120-nvfp4-tp1-256k/
-#   3. Point the two *_S3 constants below at those prefixes. The AOT *_DIR hash is derived from the compile
-#      config, so read the real directory name off the replica rather than assuming it is unchanged.
-#   4. Set ENABLE_COMPILE_CACHE = True and redeploy; confirm the ~8.8s restore in the replica log.
-COMPILE_CACHE_S3      = "s3://llm-guide/data/ray-serve-llm/compiled-cache/qwen3.6-27b/vllm0.23.0-rtxpro6000-sm120-nvfp4-tp1-256k/"
+# The 0.23.0 prefixes are still in the bucket but are NOT usable here: 0.25.1 renamed the per-rank cache
+# subdir from rank_0_0 to rank_0_0_dev0, so the old layout doesn't even match, let alone the cache keys.
+# To rebuild after the next vLLM bump:
+#   1. Deploy once with ENABLE_COMPILE_CACHE=False and ENABLE_SPEC_DECODE=0 (no-MTP text graph) and let the
+#      replica compile cold. cache_dir is pinned to COMPILE_CACHE_DIR on this path (see below), which is
+#      REQUIRED: the AOT artifact bakes in absolute inductor-cache paths, so a cache compiled under any
+#      other cache_dir cannot be restored here.
+#   2. Copy COMPILE_CACHE_DIR and COMPILE_CACHE_AOT_DIR off the REPLICA's node — not the head, which never
+#      runs the engine.
+#   3. `aws s3 sync` each to a new prefix named for the stack, then update the two *_S3 constants.
+#   4. Update COMPILE_CACHE_AOT_DIR: the hash is derived from the compile config and DOES change across
+#      vLLM versions (0.23.0 -> 0.25.1 moved it), so read it off the replica rather than assuming.
+#   5. Set ENABLE_COMPILE_CACHE = True, redeploy, and confirm the restore in the replica log.
+COMPILE_CACHE_S3      = "s3://llm-guide/data/ray-serve-llm/compiled-cache/qwen3.6-27b/vllm0.25.1-rtxpro6000-sm120-nvfp4-tp1-256k-v2/"
 COMPILE_CACHE_DIR     = "/home/ray/.cache/vllm/torch_compile_cache/qwen3.6-27b-nvfp4"
-COMPILE_CACHE_AOT_S3  = "s3://llm-guide/data/ray-serve-llm/compiled-cache/qwen3.6-27b-aot/vllm0.23.0-rtxpro6000-sm120-nvfp4-tp1-256k/"
-COMPILE_CACHE_AOT_DIR = "/home/ray/.cache/vllm/torch_compile_cache/torch_aot_compile/d2e025bea80d425afc71cd5f1be1612d659feee327c72fac7fd472a90278649f"
+COMPILE_CACHE_AOT_S3  = "s3://llm-guide/data/ray-serve-llm/compiled-cache/qwen3.6-27b-aot/vllm0.25.1-rtxpro6000-sm120-nvfp4-tp1-256k-v2/"
+COMPILE_CACHE_AOT_DIR = "/home/ray/.cache/vllm/torch_compile_cache/torch_aot_compile/6da065b950384cbbcb9c1388f5c6357211cfca1f0d91a9a0ed2097a3054d307e"
 
 # ── Build the engine config from the toggles ─────────────────────────────────
 engine_kwargs = dict(
@@ -179,8 +179,16 @@ if ENABLE_SPEC_DECODE:
 
 # (2) Compile cache: point vLLM at the cache_dir + download both caches from S3 before engine init.
 callback_config = None
-if ENABLE_COMPILE_CACHE:
+if not ENABLE_SPEC_DECODE:
+    # Pin cache_dir on the whole no-MTP path, not just when restoring. The AOT artifact stores ABSOLUTE
+    # paths into the inductor cache dir, so a cache is only loadable under the same cache_dir it was
+    # compiled under. Leaving this unset during a cold compile (as a rebuild run does) sends the artifacts
+    # to a hashed default dir, and restoring that cache here dies with
+    #   FileNotFoundError: .../torch_compile_cache/<hash>/rank_0_0_dev0/backbone/artifact_compile_range_...
+    # which kills the engine rather than falling back to a cold compile. Pinning it unconditionally means a
+    # rebuild run bakes in the same path the restore uses.
     engine_kwargs["compilation_config"] = {"cache_dir": COMPILE_CACHE_DIR}
+if ENABLE_COMPILE_CACHE:
     callback_config = {
         "callback_class": "ray.llm._internal.common.callbacks.cloud_downloader.CloudDownloader",
         "callback_kwargs": {"paths": [

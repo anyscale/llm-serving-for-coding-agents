@@ -6,9 +6,9 @@ These measurements map to the `ENABLE_*` control panel in
 Unless noted, results are from 1× RTX PRO 6000 (`g7e.4xlarge`, 96 GB, SM120), TP=1. The current default is
 `nvidia/Qwen3.6-27B-NVFP4`.
 
-> **These numbers were measured on vLLM 0.22.0–0.23.0 (`ray-llm:2.56.0`).** The service now runs
-> `ray-llm:2.57.0` / vLLM 0.25.1 and nothing here has been re-measured on it — see
-> [Revalidation on vLLM 0.25.1](#revalidation-on-vllm-0251).
+> **Except for the compile cache (§2), these numbers were measured on vLLM 0.22.0–0.23.0
+> (`ray-llm:2.56.0`).** The service now runs `ray-llm:2.57.0` / vLLM 0.25.1; only knob 2 has been
+> rebuilt and re-measured there — see [Revalidation on vLLM 0.25.1](#revalidation-on-vllm-0251).
 
 Note on context length: the decode/throughput numbers were measured at `max_model_len=81920` with real
 prompts up to ~73K tokens. Per-token rates are largely insensitive to the `max_model_len` cap, but treat the
@@ -22,7 +22,7 @@ Each row compares one knob off vs on, on the same hardware.
 |---|---|---|---|---|---|
 | 0 | `ENABLE_NVFP4_WEIGHTS` | FP8, ~27 GB | NVFP4, ~22 GB | ~5 GB smaller (~19%) | On |
 | 1 | `ENABLE_FAST_MODEL_LOADING` | HF download, ~85 s | RunAI Streamer, ~25 s | 3.4× faster load | Off |
-| 2 | `ENABLE_COMPILE_CACHE` | Recompile, 74.5 s | Prebuilt cache, 8.8 s | 8.5× faster compile | Off — needs a 0.25.1 rebuild; also auto-off with MTP |
+| 2 | `ENABLE_COMPILE_CACHE` | Recompile, 48.5 s | Prebuilt cache, 6.0 s | 8.0× faster compile | On only without MTP |
 | 3 | `ENABLE_FP8_KV_CACHE` | bf16 KV, ~3.3× concurrency at 256K | fp8 KV, full 256K | 6.53× concurrency | On |
 | 4 | `ENABLE_CUDA_GRAPHS` | Eager, 15.9 tok/s | Graphs, 45.6 tok/s | 2.87× decode (FP8 measurement) | On |
 | 5 | `ENABLE_SPEC_DECODE` | NVFP4 base, 65 tok/s | NVFP4 + MTP, 121 tok/s | 1.86× single-stream decode | On |
@@ -83,21 +83,34 @@ automatically when spec decode is enabled.
 ## 2. Compile Cache
 
 The service restores prebuilt inductor + AOT [torch.compile](https://docs.ray.io/en/latest/serve/llm/user-guides/deployment-initialization.html#torch-compile-cache) caches from S3, so a fresh replica skips compile.
-The no-MTP text-graph cache was built and uploaded on 2026-07-23 for vLLM 0.23.0, RTX PRO 6000, NVFP4
-weights + FP8 KV, TP=1, and 256K context. MTP and image-heavy requests have different graphs and compile
-cold. Rebuild under a new S3 prefix if the image, GPU, weight format, or flags change.
+The no-MTP text-graph cache was **rebuilt and re-measured on 2026-08-10** for vLLM 0.25.1
+(`ray-llm:2.57.0`), RTX PRO 6000, NVFP4 weights + FP8 KV, TP=1, and 256K context. MTP and image-heavy
+requests have different graphs and compile cold. Rebuild under a new S3 prefix if the image, GPU, weight
+format, or flags change.
 
-| Compile path | Time |
-|---|---|
-| Cold compile | 74.5 s |
-| Prebuilt cache restored | 8.8 s |
+Measured end to end on 0.25.1 — cold compile on one replica, then restore on a fresh replica:
 
-Verdict: worth having on the no-MTP text path, but **off by default on ray-llm 2.57.0**. A torch.compile
-cache is keyed to the exact vLLM version, and the published cache was built on 0.23.0 — pointing the 0.25.1
-engine at it costs the download and still compiles cold. Rebuild it on 0.25.1 (recipe in
-[`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py)) and then set
-`ENABLE_COMPILE_CACHE = True`. The control panel disables it automatically when MTP is enabled regardless,
-so the default MTP deployment is unaffected.
+| Compile path | Compilation | Total engine init |
+|---|---|---|
+| Cold compile | 48.5 s | 365.9 s |
+| Prebuilt cache restored | 6.0 s | 320.3 s |
+
+Verdict: keep on for the no-MTP text path — 8.0× on the compile step, ~45 s off engine init. The control
+panel disables it automatically when MTP is enabled, so the default MTP deployment is unaffected.
+
+Two things bite when rebuilding this cache, both learned the hard way:
+
+- **The cache must be compiled under the same `cache_dir` it is restored into.** The AOT artifact stores
+  absolute paths into the inductor cache directory. A cache compiled under a different `cache_dir` fails at
+  restore with `FileNotFoundError: .../rank_0_0_dev0/backbone/artifact_compile_range_...`, and vLLM does
+  **not** fall back to a cold compile — the engine dies and the service goes UNHEALTHY. The serve file
+  therefore pins `cache_dir` across the whole no-MTP path, not just when downloading.
+- **The old 0.23.0 cache is not merely stale, it is structurally different.** vLLM 0.25.1 renamed the
+  per-rank subdir from `rank_0_0` to `rank_0_0_dev0`, and the `torch_aot_compile/<hash>` directory name
+  changed too (`d2e025be…` → `6da065b9…`), so `COMPILE_CACHE_AOT_DIR` has to be re-read off the replica.
+
+Note the cold path got cheaper on its own: 48.5 s here vs the 74.5 s measured on 0.22.0/0.23.0. The cache
+still pays for itself, but the absolute saving is smaller than on the older stack.
 
 ## 3. FP8 KV Cache
 
@@ -184,19 +197,27 @@ the Part 3 service YAMLs, so keep it on.
 
 ## Revalidation on vLLM 0.25.1
 
-Everything above was measured on vLLM 0.22.0–0.23.0 under `ray-llm:2.56.0`. The service now runs
-`ray-llm:2.57.0` / vLLM 0.25.1. The upgrade was made for the Claude Code `/v1/messages` schema and the
-direct-streaming router fix, not because anything was re-measured — treat these as open until re-run on
-0.25.1:
+The upgrade to `ray-llm:2.57.0` / vLLM 0.25.1 was made for the Claude Code `/v1/messages` schema and the
+direct-streaming router fix. Only some of it has been re-measured there.
+
+**Verified on 0.25.1 (2026-08-10):**
+
+| What | Result |
+|---|---|
+| Compile cache (knob 2) | Rebuilt and re-measured: 48.5 s → 6.0 s. See [§2](#2-compile-cache). |
+| Service health, both parts | Part 1 (4× L4) and Part 3 (1× RTX PRO 6000) both reach RUNNING and serve. |
+| `/v1/messages`, `/v1/responses`, `/v1/chat/completions` | All 200, including a `system` role inside `messages[]` — the payload vLLM 0.22.0 rejected. |
+| NVFP4 + MTP default path | Engine starts and serves; `g7e.4xlarge` reports `1xRTX-PRO-6000-96G`. |
+
+**Still open — treat as unverified until re-run on 0.25.1:**
 
 | What | Why it can move on 0.25.1 |
 |---|---|
-| NVFP4 on SM120 | Dense NVFP4 runs the Marlin fallback; kernel selection can change between vLLM minors, which moves decode throughput in either direction. |
+| NVFP4 decode throughput | Dense NVFP4 runs the Marlin fallback; kernel selection can change between vLLM minors, which moves throughput in either direction. The engine works; the *numbers* are 0.23.0's. |
 | Image input | Verified on 0.23.0 only. The multimodal path and `mm_processor_kwargs` handling change often. |
 | MTP spec decode | 65 → 121 tok/s and the `num_speculative_tokens` sweep are 0.23.0 numbers. |
 | CUDA graphs, FP8 KV | Expected to hold, but the 2.87× and 6.53× figures are older FP8-weight measurements. |
 | RunAI Streamer + MTP | Still expected to conflict ([vllm#42060](https://github.com/vllm-project/vllm/issues/42060) is open), but the failure was reproduced on ≤ 0.23.0. |
-| Compile cache | Definitely invalid: the cache is keyed to vLLM 0.23.0. Rebuild before enabling. |
 | Prefix routing | [ray#64328](https://github.com/ray-project/ray/pull/64328) is in the 2.57.0 branch; the end-to-end path has not been exercised here. |
 
 Re-run the knob sweeps against the same Claude Code session replay so the numbers stay comparable, then

@@ -5,8 +5,9 @@ Read this before changing toggles in
 
 These findings were measured or root-caused on `qwen3.6-27b`, 1× RTX PRO 6000 96 GB
 (`g7e.4xlarge`), `ray-llm:2.56.0-py312-cu130`, and vLLM 0.22.0–0.23.0. The service now runs
-`ray-llm:2.57.0-py312-cu130` / vLLM 0.25.1; the conflicts below have not been re-reproduced on it, and the
-one item the upgrade resolves outright is called out inline. The current weight default is
+`ray-llm:2.57.0-py312-cu130` / vLLM 0.25.1; apart from the compile cache (rebuilt and re-measured there),
+the conflicts below have not been re-reproduced on it, and the items the upgrade resolves outright are
+called out inline. The current weight default is
 `nvidia/Qwen3.6-27B-NVFP4`; FP8 remains the KV-cache dtype. Full numbers are in
 [`BENCHMARKS.md`](BENCHMARKS.md).
 
@@ -48,9 +49,11 @@ The prebuilt NVFP4 cache is keyed to the no-MTP text graph. MTP and image-heavy 
 compile graphs, so they cannot reuse that cache. The control panel automatically disables
 `ENABLE_COMPILE_CACHE` when MTP is enabled.
 
-A torch.compile cache is also keyed to the exact vLLM version, so the published 0.23.0 cache does not apply
-to the 0.25.1 engine in ray-llm 2.57.0 either. `ENABLE_COMPILE_CACHE` therefore defaults to `False` until
-the cache is rebuilt — see the recipe in
+A torch.compile cache is also keyed to the exact vLLM version, and to the `cache_dir` it was compiled
+under — the AOT artifact stores absolute paths into the inductor cache dir. The cache shipped here was
+rebuilt on vLLM 0.25.1 under `COMPILE_CACHE_DIR`, which the serve file pins across the whole no-MTP path
+for that reason. A mismatch on either axis is fatal, not a graceful miss: the engine raises
+`FileNotFoundError` on `artifact_compile_range_*` and the service goes UNHEALTHY. Rebuild recipe is in
 [`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py).
 
 ### 3. Direct Streaming and Built-In Prefix Routing — resolved on ray-llm 2.57.0
