@@ -93,8 +93,9 @@ The no-MTP text-graph cache was **rebuilt and re-measured on 2026-08-10** for vL
 requests have different graphs and compile cold. Rebuild under a new S3 prefix if the image, GPU, weight
 format, or flags change.
 
-Both stacks, cold compile on one replica then restore on a fresh replica — a good illustration of how much
-absolute timings move across a vLLM minor release:
+A useful illustration of how much absolute timings move across a vLLM minor release. The 0.25.1 row was
+taken by cold-compiling on one replica and then restoring on a fresh one; the earlier row is the original
+published measurement:
 
 | Stack | Cold compile | Cache restored | Speedup |
 |---|---|---|---|

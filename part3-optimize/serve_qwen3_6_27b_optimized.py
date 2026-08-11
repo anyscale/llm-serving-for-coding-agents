@@ -127,6 +127,9 @@ else:
 #   4. Update COMPILE_CACHE_AOT_DIR: the hash is derived from the compile config and DOES change across
 #      vLLM versions (0.23.0 -> 0.25.1 moved it), so read it off the replica rather than assuming.
 #   5. Set ENABLE_COMPILE_CACHE = True, redeploy, and confirm the restore in the replica log.
+#
+# The "-v2" suffix is not meaningful beyond history: a first 0.25.1 upload was compiled under the wrong
+# cache_dir (see step 1) and is unusable. Drop the suffix on the next rebuild.
 COMPILE_CACHE_S3      = "s3://llm-guide/data/ray-serve-llm/compiled-cache/qwen3.6-27b/vllm0.25.1-rtxpro6000-sm120-nvfp4-tp1-256k-v2/"
 COMPILE_CACHE_DIR     = "/home/ray/.cache/vllm/torch_compile_cache/qwen3.6-27b-nvfp4"
 COMPILE_CACHE_AOT_S3  = "s3://llm-guide/data/ray-serve-llm/compiled-cache/qwen3.6-27b-aot/vllm0.25.1-rtxpro6000-sm120-nvfp4-tp1-256k-v2/"
