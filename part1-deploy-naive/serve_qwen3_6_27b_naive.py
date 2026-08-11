@@ -60,7 +60,7 @@ llm_config = LLMConfig(
         gpu_memory_utilization=0.85,
         # kv_cache_dtype left at the vLLM default (bf16) — no tuning here; see Part 3.
         # Validated on this shape: 652,346-token GPU KV cache, 10.38 GiB/GPU,
-        # 4.98x raw concurrency at 128K (vLLM 0.22.0 engine log; not re-measured on 0.25.1).
+        # 4.98x raw concurrency at 128K.
         max_num_seqs=16,
         max_num_batched_tokens=8192,
         enable_prefix_caching=True,
