@@ -25,7 +25,7 @@ digest-pinning note.
 | Weights | FP8 | NVFP4 (~22 GB; FP8 fallback retained for older FP8-capable GPUs) |
 | Context / KV | 128K | Full 256K with FP8 KV |
 | Model load | S3 download, ~85 s | HF download, ~85 s by default; optional RunAI Streamer S3→GPU, ~25 s |
-| Compile | Recompile every cold start, ~48 s | No-MTP text path: S3 torch.compile cache, ~6 s; MTP/image graphs compile cold |
+| Compile | Recompile every cold start, ~74 s | No-MTP text path: S3 torch.compile cache, ~9 s; MTP/image graphs compile cold |
 | Decode | CUDA graphs only | NVFP4 + CUDA graphs + MTP: 121 tok/s vs 65 tok/s without MTP |
 | Scaling | Single replica | Autoscale 1→4, round-robin via [`service-always-on.yaml`](service-always-on.yaml) (or 0→4 via [`service-work-hours.yaml`](service-work-hours.yaml)) |
 
@@ -53,7 +53,7 @@ apply to A100/A10.
 | Knob | Default | Why |
 |---|---|---|
 | `ENABLE_FAST_MODEL_LOADING` | `False` | Optional RunAI Streamer path for cold-start-focused deployments. Leave off when spec decode is on. |
-| `ENABLE_COMPILE_CACHE` | `True` | Restores the no-MTP NVFP4 text-graph cache, cutting compile from ~48.5 s to ~6.0 s (rebuilt and measured on vLLM 0.25.1). Automatically disabled when MTP is on. |
+| `ENABLE_COMPILE_CACHE` | `True` | Restores the no-MTP NVFP4 text-graph cache, cutting compile from ~74.5 s to ~8.8 s (~48.5 s to ~6.0 s as re-measured on vLLM 0.25.1 — the ratio holds, the absolutes shift per vLLM version). Automatically disabled when MTP is on. |
 | `ENABLE_FP8_KV_CACHE` | `True` | Halves KV memory so the full 256K context fits. |
 | `ENABLE_CUDA_GRAPHS` | `True` | Biggest free win: ~2.87× decode on Blackwell. |
 | `ENABLE_SPEC_DECODE` | `True` | MTP gives 121 tok/s vs 65 tok/s on the NVFP4 single-stream test. Set `ENABLE_SPEC_DECODE=0` for saturated high-concurrency traffic. |

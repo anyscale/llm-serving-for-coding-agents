@@ -6,9 +6,14 @@ These measurements map to the `ENABLE_*` control panel in
 Unless noted, results are from 1× RTX PRO 6000 (`g7e.4xlarge`, 96 GB, SM120), TP=1. The current default is
 `nvidia/Qwen3.6-27B-NVFP4`.
 
-> **Except for the compile cache (§2), these numbers were measured on vLLM 0.22.0–0.23.0
-> (`ray-llm:2.56.0`).** The service now runs `ray-llm:2.57.0` / vLLM 0.25.1; only knob 2 has been
-> rebuilt and re-measured there — see [Revalidation on vLLM 0.25.1](#revalidation-on-vllm-0251).
+> **The table below reports the original measurements, taken on vLLM 0.22.0–0.23.0 (`ray-llm:2.56.0`).**
+> The tutorial now ships `ray-llm:2.57.0` / vLLM 0.25.1. **Absolute numbers move between vLLM versions** —
+> kernel selection, compile behaviour, and scheduler defaults all change across minor releases — so treat
+> these as the relative shape of each knob, not as figures to expect verbatim on a newer engine. The one
+> knob re-measured on 0.25.1 so far is the compile cache: **48.5 s → 6.0 s (8.0×)** there, versus
+> 74.5 s → 8.8 s (8.5×) originally — same win, different absolutes, because the cold path itself got ~35%
+> cheaper. Details in [§2](#2-compile-cache); the rest of the re-run list is in
+> [Revalidation on vLLM 0.25.1](#revalidation-on-vllm-0251).
 
 Note on context length: the decode/throughput numbers were measured at `max_model_len=81920` with real
 prompts up to ~73K tokens. Per-token rates are largely insensitive to the `max_model_len` cap, but treat the
@@ -22,7 +27,7 @@ Each row compares one knob off vs on, on the same hardware.
 |---|---|---|---|---|---|
 | 0 | `ENABLE_NVFP4_WEIGHTS` | FP8, ~27 GB | NVFP4, ~22 GB | ~5 GB smaller (~19%) | On |
 | 1 | `ENABLE_FAST_MODEL_LOADING` | HF download, ~85 s | RunAI Streamer, ~25 s | 3.4× faster load | Off |
-| 2 | `ENABLE_COMPILE_CACHE` | Recompile, 48.5 s | Prebuilt cache, 6.0 s | 8.0× faster compile | On only without MTP |
+| 2 | `ENABLE_COMPILE_CACHE` | Recompile, 74.5 s | Prebuilt cache, 8.8 s | 8.5× faster compile | On only without MTP |
 | 3 | `ENABLE_FP8_KV_CACHE` | bf16 KV, ~3.3× concurrency at 256K | fp8 KV, full 256K | 6.53× concurrency | On |
 | 4 | `ENABLE_CUDA_GRAPHS` | Eager, 15.9 tok/s | Graphs, 45.6 tok/s | 2.87× decode (FP8 measurement) | On |
 | 5 | `ENABLE_SPEC_DECODE` | NVFP4 base, 65 tok/s | NVFP4 + MTP, 121 tok/s | 1.86× single-stream decode | On |
@@ -88,15 +93,18 @@ The no-MTP text-graph cache was **rebuilt and re-measured on 2026-08-10** for vL
 requests have different graphs and compile cold. Rebuild under a new S3 prefix if the image, GPU, weight
 format, or flags change.
 
-Measured end to end on 0.25.1 — cold compile on one replica, then restore on a fresh replica:
+Both stacks, cold compile on one replica then restore on a fresh replica — a good illustration of how much
+absolute timings move across a vLLM minor release:
 
-| Compile path | Compilation | Total engine init |
-|---|---|---|
-| Cold compile | 48.5 s | 365.9 s |
-| Prebuilt cache restored | 6.0 s | 320.3 s |
+| Stack | Cold compile | Cache restored | Speedup |
+|---|---|---|---|
+| vLLM 0.22.0–0.23.0 (`ray-llm:2.56.0`), original | 74.5 s | 8.8 s | 8.5× |
+| vLLM 0.25.1 (`ray-llm:2.57.0`), re-measured 2026-08-10 | 48.5 s | 6.0 s | 8.0× |
 
-Verdict: keep on for the no-MTP text path — 8.0× on the compile step, ~45 s off engine init. The control
-panel disables it automatically when MTP is enabled, so the default MTP deployment is unaffected.
+On 0.25.1 the restore also took total engine init from 365.9 s to 320.3 s, so about 45 s off a cold start.
+
+Verdict: keep on for the no-MTP text path. The control panel disables it automatically when MTP is enabled,
+so the default MTP deployment is unaffected.
 
 Two things bite when rebuilding this cache, both learned the hard way:
 
@@ -109,8 +117,9 @@ Two things bite when rebuilding this cache, both learned the hard way:
   per-rank subdir from `rank_0_0` to `rank_0_0_dev0`, and the `torch_aot_compile/<hash>` directory name
   changed too (`d2e025be…` → `6da065b9…`), so `COMPILE_CACHE_AOT_DIR` has to be re-read off the replica.
 
-Note the cold path got cheaper on its own: 48.5 s here vs the 74.5 s measured on 0.22.0/0.23.0. The cache
-still pays for itself, but the absolute saving is smaller than on the older stack.
+Note the cold path got cheaper on its own between the two stacks, so the cache still pays for itself but
+saves less wall-clock than it used to. That is the general pattern to expect from a vLLM bump: the ratios
+hold up better than the absolute seconds.
 
 ## 3. FP8 KV Cache
 
@@ -204,7 +213,7 @@ direct-streaming router fix. Only some of it has been re-measured there.
 
 | What | Result |
 |---|---|
-| Compile cache (knob 2) | Rebuilt and re-measured: 48.5 s → 6.0 s. See [§2](#2-compile-cache). |
+| Compile cache (knob 2) | Rebuilt and re-measured: 48.5 s → 6.0 s (8.0×), vs 74.5 s → 8.8 s (8.5×) originally. See [§2](#2-compile-cache). |
 | Service health, both parts | Part 1 (4× L4) and Part 3 (1× RTX PRO 6000) both reach RUNNING and serve. |
 | `/v1/messages`, `/v1/responses`, `/v1/chat/completions` | All 200, including a `system` role inside `messages[]` — the payload vLLM 0.22.0 rejected. |
 | NVFP4 + MTP default path | Engine starts and serves; `g7e.4xlarge` reports `1xRTX-PRO-6000-96G`. |

@@ -38,8 +38,9 @@ ENABLE_NVFP4_WEIGHTS = True
 ENABLE_FAST_MODEL_LOADING = False
 
 # (2) COMPILE CACHE — download the prebuilt inductor + AOT torch.compile caches from S3 so a cold replica
-#     skips the whole compile (measured 48.5s -> 6.0s on vLLM 0.25.1). The cache is keyed to the no-MTP
-#     text graph; MTP and image-heavy graphs differ, so those cold-compile regardless. OFF -> compile cold.
+#     skips the whole compile (validated 74.5s -> 8.8s; 48.5s -> 6.0s as re-measured on vLLM 0.25.1 — the
+#     ratio holds, the absolutes move per vLLM version). The cache is keyed to the no-MTP text graph; MTP
+#     and image-heavy graphs differ, so those cold-compile regardless. OFF -> compile cold.
 ENABLE_COMPILE_CACHE = True
 
 # (3) FP8 KV CACHE — store K/V in fp8: ~half the KV memory, which is what lets the full 256K context fit
