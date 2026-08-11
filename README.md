@@ -48,9 +48,6 @@ With direct streaming enabled, the deployment exposes each agent's expected API 
 - The stock **public** image `anyscale/ray-llm:2.57.0-py312-cu130` (ray-llm 2.57.0 + **vLLM 0.25.1**),
   pullable from Docker Hub with no creds — Part 1 uses it as-is, since 0.25.1 accepts Claude Code's
   `/v1/messages` schema natively. Part 3 builds on the same base to add the RunAI Streamer.
-  > ⚠ **Ray 2.57.0 is pre-GA** as of 2026-08-10 — the image is published, but no PyPI wheel or GitHub
-  > release exists yet, so `pip install "ray[serve,llm]==2.57.0"` fails and the tag can still be re-pushed.
-  > Pin the image by digest for anything long-lived; see [Part 3's Containerfile](./part3-optimize/Containerfile).
 
 ## Quick Start
 

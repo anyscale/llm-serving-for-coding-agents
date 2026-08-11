@@ -6,11 +6,8 @@
 # ray-llm 2.57.0 ships vLLM 0.25.1, which accepts Claude Code's current /v1/messages schema natively,
 # so the `pip install "vllm==0.23.0"` override that the 2.56.0 base needed is gone.
 #
-# ⚠ 2.57.0 is PRE-GA: the image is published, but no Ray 2.57.0 PyPI wheel or GitHub release exists yet
-# (checked 2026-08-10), so `pip install "ray[serve,llm]==2.57.0"` fails and the tag can still be re-pushed.
-# PIN the base for production — the torch.compile cache is keyed to the exact vLLM version/GPU/flags, so a
-# drifting base silently invalidates it. For a fully immutable build, use the digest instead of the tag
-# (2.57.0-py312-cu130 resolved to this digest on 2026-08-10):
+# PIN the base for production: the torch.compile cache is keyed to the exact vLLM version/GPU/flags, so a
+# drifting base silently invalidates it. For a fully immutable build, use the digest instead of the tag:
 #   FROM anyscale/ray-llm@sha256:250e890f34a681c4e35ca2c26ea6cea660bce778bac48aef0ddb42492bb07a33
 FROM anyscale/ray-llm:2.57.0-py312-cu130
 

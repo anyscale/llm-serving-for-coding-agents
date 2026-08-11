@@ -90,9 +90,6 @@ also exists — handy for a service *without* direct streaming — but this repo
   `ray-llm:2.56.0` ships vLLM 0.22.0, which serves Codex and Cursor but rejects Claude Code's `system` role
   (this tutorial used to carry a prebuilt image that force-upgraded it to 0.23.0), and `ray-llm:2.55.x`
   ships vLLM 0.18, too old to load Qwen3.6.
-  > ⚠ **Ray 2.57.0 is pre-GA** as of 2026-08-10: the image is published, but there is no PyPI wheel or
-  > GitHub release yet, so `pip install "ray[serve,llm]==2.57.0"` fails and the tag can still be re-pushed.
-  > Use the image, and pin it by digest for anything long-lived (see [Part 3's Containerfile](../part3-optimize/Containerfile)).
 - **4× L4 / TP=4** (`g6.12xlarge`) — a common, widely-available GPU shape, used here as the baseline. It's
   not optimal: L4 has the lowest memory bandwidth of the serving GPUs (~300 GB/s) and the 4 cards talk over
   PCIe with no NVLink, so tensor-parallel comms cost you. The FP8 weights fit on a single bigger GPU, so

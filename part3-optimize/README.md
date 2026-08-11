@@ -14,8 +14,8 @@ for Claude Code's current `/v1/messages` schema on its own, so the `vllm==0.23.0
 of this tutorial carried is gone. The compile cache was rebuilt and re-measured on 0.25.1; the other
 measurements below were taken on vLLM 0.22.0–0.23.0 (ray-llm 2.56.0) and have **not been re-run**, so see
 [Revalidation on vLLM 0.25.1](notes/BENCHMARKS.md#revalidation-on-vllm-0251) for what is verified and what
-is still open. Ray 2.57.0 is pre-GA as of 2026-08-10 — see [`Containerfile`](Containerfile) for the
-digest-pinning note.
+is still open. See [`Containerfile`](Containerfile) for the digest-pinning note — the compile cache is keyed
+to the exact vLLM version, so a drifting base tag silently invalidates it.
 
 ## What Changes
 
