@@ -9,8 +9,12 @@ unmeasured default is autoscale `target_ongoing_requests`, which is intentionall
 cost-reduction case, including savings vs commercial seats and token-metered API billing, see
 [`notes/COST-ESTIMATE.md`](notes/COST-ESTIMATE.md).
 
-The Part 3 image upgrades the base image's vLLM 0.22.0 to 0.23.0 for compatibility with Claude Code's
-current `/v1/messages` schema and the validated NVFP4 deployment.
+The Part 3 image builds on `anyscale/ray-llm:2.57.0-py312-cu130`, which ships **vLLM 0.25.1** — new enough
+for Claude Code's current `/v1/messages` schema on its own, so the `vllm==0.23.0` override earlier versions
+of this tutorial carried is gone. The measurements below were taken on vLLM 0.22.0–0.23.0 (ray-llm 2.56.0)
+and have **not been re-run on 0.25.1**; see
+[Revalidation on vLLM 0.25.1](notes/BENCHMARKS.md#revalidation-on-vllm-0251) for the list. Ray 2.57.0 is
+pre-GA as of 2026-08-10 — see [`Containerfile`](Containerfile) for the digest-pinning note.
 
 ## What Changes
 
@@ -20,7 +24,7 @@ current `/v1/messages` schema and the validated NVFP4 deployment.
 | Weights | FP8 | NVFP4 (~22 GB; FP8 fallback retained for older FP8-capable GPUs) |
 | Context / KV | 128K | Full 256K with FP8 KV |
 | Model load | S3 download, ~85 s | HF download, ~85 s by default; optional RunAI Streamer S3→GPU, ~25 s |
-| Compile | Recompile every cold start, ~74 s | No-MTP text path: S3 torch.compile cache, ~9 s; MTP/image graphs compile cold |
+| Compile | Recompile every cold start, ~74 s | No-MTP text path: S3 torch.compile cache, ~9 s (off until rebuilt on vLLM 0.25.1); MTP/image graphs compile cold |
 | Decode | CUDA graphs only | NVFP4 + CUDA graphs + MTP: 121 tok/s vs 65 tok/s without MTP |
 | Scaling | Single replica | Autoscale 1→4, round-robin via [`service-always-on.yaml`](service-always-on.yaml) (or 0→4 via [`service-work-hours.yaml`](service-work-hours.yaml)) |
 
@@ -48,7 +52,7 @@ apply to A100/A10.
 | Knob | Default | Why |
 |---|---|---|
 | `ENABLE_FAST_MODEL_LOADING` | `False` | Optional RunAI Streamer path for cold-start-focused deployments. Leave off when spec decode is on. |
-| `ENABLE_COMPILE_CACHE` | `True` | Restores the no-MTP NVFP4 text-graph cache, cutting compile from ~74.5 s to ~8.8 s. Automatically disabled when MTP is on. |
+| `ENABLE_COMPILE_CACHE` | `False` | Restores the no-MTP NVFP4 text-graph cache, cutting compile from ~74.5 s to ~8.8 s. Off on ray-llm 2.57.0 because the published cache was built on vLLM 0.23.0 and won't match the 0.25.1 engine — rebuild it (recipe in the serve file), then turn this on. Automatically disabled when MTP is on either way. |
 | `ENABLE_FP8_KV_CACHE` | `True` | Halves KV memory so the full 256K context fits. |
 | `ENABLE_CUDA_GRAPHS` | `True` | Biggest free win: ~2.87× decode on Blackwell. |
 | `ENABLE_SPEC_DECODE` | `True` | MTP gives 121 tok/s vs 65 tok/s on the NVFP4 single-stream test. Set `ENABLE_SPEC_DECODE=0` for saturated high-concurrency traffic. |
@@ -56,8 +60,10 @@ apply to A100/A10.
 
 Direct streaming is always on because Part 2 connects Claude Code (`/v1/messages`), Codex (`/v1/responses`), and Cursor (`/v1/chat/completions`) to these native endpoints.
 It is enabled in the service YAMLs so the Serve controller sees it at startup. If you enable prefix routing,
-the service uses `DirectStreamingPrefixCacheRouter` until the upstream fix
-[ray#64328](https://github.com/ray-project/ray/pull/64328) lands in ray-llm 2.57.
+the service uses Ray's stock `PrefixCacheAffinityRouter`:
+[ray#64328](https://github.com/ray-project/ray/pull/64328) shipped in ray-llm 2.57.0, so the router now reads
+the direct-streaming request body and the `DirectStreamingPrefixCacheRouter` adapter this repo used to carry
+is gone. (On ray-llm 2.56.x you still need that adapter — recover it from this repo's history.)
 
 `accelerator_type` is intentionally omitted because `LLMConfig` rejects `RTX-PRO-6000`; the service configs
 pin the `g7e` node instead.
@@ -68,8 +74,7 @@ pin the `g7e` node instead.
 - `service-always-on.yaml`, `service-work-hours.yaml`, and `schedule-work-hours-warmup.yaml` — Anyscale entry points.
 - `warmup.sh` — weekday morning warmup helper for work-hours mode.
 - `notes/` — benchmark data, cost estimates, and compatibility notes.
-- `direct_streaming_prefix_router.py` — prefix-routing adapter for direct streaming, only used if you opt in.
-- `Containerfile` — `ray-llm:2.56.0` with vLLM 0.23.0 and `runai-model-streamer`.
+- `Containerfile` — `ray-llm:2.57.0` (vLLM 0.25.1, stock) plus `runai-model-streamer`.
 
 ## Deploy
 

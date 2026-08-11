@@ -9,6 +9,12 @@
 # (verified on RTX PRO 6000 / vLLM 0.23.0). Every optimization is a toggle in the CONTROL PANEL.
 # Full measurements + the "knobs that can't be combined" matrix:
 # notes/BENCHMARKS.md / notes/INCOMPATIBILITIES.md.
+#
+# STACK: ray-llm 2.57.0 / vLLM 0.25.1 (Containerfile). Everything below was measured or verified on
+# vLLM 0.22.0-0.23.0 under ray-llm 2.56.0 and has NOT been re-validated on 0.25.1 — see
+# notes/BENCHMARKS.md "Revalidation on vLLM 0.25.1" for what to re-run. The one behavior change the
+# upgrade brings is the prefix router (knob 6): ray#64328 makes the stock router work under direct
+# streaming, so the DirectStreamingPrefixCacheRouter adapter this repo carried is gone.
 
 import os
 
@@ -33,7 +39,11 @@ ENABLE_FAST_MODEL_LOADING = False
 # (2) COMPILE CACHE — download the prebuilt inductor + AOT torch.compile caches from S3 so a cold replica
 #     skips the whole compile (validated 74.5s -> 8.8s). The cache is keyed to the no-MTP text graph; MTP
 #     and image-heavy graphs differ, so those cold-compile regardless. OFF -> compile cold.
-ENABLE_COMPILE_CACHE = True
+#     ⚠ OFF on ray-llm 2.57.0: the published cache was built on vLLM 0.23.0 and a torch.compile cache is
+#     keyed to the exact vLLM version, so the 0.25.1 engine won't match it — you'd pay the download and
+#     still compile cold. Rebuild it on 0.25.1 (recipe at COMPILE_CACHE_S3 below), then flip this to True.
+#     This only affects the no-MTP path: with the default MTP on, the cache is disabled anyway.
+ENABLE_COMPILE_CACHE = False
 
 # (3) FP8 KV CACHE — store K/V in fp8: ~half the KV memory, which is what lets the full 256K context fit
 #     (6.53× concurrency on 96GB).  OFF -> default bf16 KV; 256K won't fit, so lower max_model_len.
@@ -84,7 +94,8 @@ if ENABLE_SPEC_DECODE:
     print(f"[config] {WEIGHT_FORMAT} weights + MTP. MTP has no prebuilt compile cache -> cold compile. "
           "For high concurrency set ENABLE_SPEC_DECODE=0.")
 else:
-    cache_status = "using the prebuilt NVFP4 compile cache" if ENABLE_COMPILE_CACHE else "compiling cold"
+    cache_status = ("using the prebuilt NVFP4 compile cache" if ENABLE_COMPILE_CACHE
+                    else "compiling cold (ENABLE_COMPILE_CACHE is off until the cache is rebuilt on vLLM 0.25.1)")
     print(f"[config] {WEIGHT_FORMAT} weights, no MTP (high concurrency) -> {cache_status}.")
 
 from ray.serve.llm import LLMConfig, build_openai_app
@@ -105,6 +116,16 @@ else:
 # weights + FP8 KV / TP=1 / 256K, no-MTP text graph). Used when ENABLE_COMPILE_CACHE and MTP is off. vLLM
 # caches in two dirs (inductor + AOT), restored to the two local paths below. Rebuild + new prefix if the
 # image/GPU/flags (or compile graph, e.g. image input) change.
+#
+# ⚠ These are the vLLM 0.23.0 prefixes and they do NOT match the 0.25.1 engine in ray-llm 2.57.0 — that's
+# why ENABLE_COMPILE_CACHE defaults to False. To rebuild for 0.25.1:
+#   1. Deploy once on 2.57.0 with ENABLE_COMPILE_CACHE=False and ENABLE_SPEC_DECODE=0 (no-MTP text graph),
+#      and let the replica compile cold.
+#   2. Copy COMPILE_CACHE_DIR and COMPILE_CACHE_AOT_DIR off the replica to a new S3 prefix, naming it for
+#      the new stack: .../vllm0.25.1-rtxpro6000-sm120-nvfp4-tp1-256k/
+#   3. Point the two *_S3 constants below at those prefixes. The AOT *_DIR hash is derived from the compile
+#      config, so read the real directory name off the replica rather than assuming it is unchanged.
+#   4. Set ENABLE_COMPILE_CACHE = True and redeploy; confirm the ~8.8s restore in the replica log.
 COMPILE_CACHE_S3      = "s3://llm-guide/data/ray-serve-llm/compiled-cache/qwen3.6-27b/vllm0.23.0-rtxpro6000-sm120-nvfp4-tp1-256k/"
 COMPILE_CACHE_DIR     = "/home/ray/.cache/vllm/torch_compile_cache/qwen3.6-27b-nvfp4"
 COMPILE_CACHE_AOT_S3  = "s3://llm-guide/data/ray-serve-llm/compiled-cache/qwen3.6-27b-aot/vllm0.23.0-rtxpro6000-sm120-nvfp4-tp1-256k/"
@@ -152,7 +173,8 @@ if not ENABLE_CUDA_GRAPHS:
 if ENABLE_SPEC_DECODE:
     # num_speculative_tokens=3 is the measured sweet spot on the real agent replay: +24% out tok/s,
     # +44% turns/s, -19% TPOT vs 2. 4 REGRESSES below 2 (draft/verify overhead > acceptance gain).
-    # See notes/BENCHMARKS.md knob 5. (MTP served the traces' ~73K-tok prompts with 0 errors on vLLM 0.22.)
+    # See notes/BENCHMARKS.md knob 5. (MTP served the traces' ~73K-tok prompts with 0 errors on vLLM 0.22;
+    # the sweep has not been re-run on 0.25.1.)
     engine_kwargs["speculative_config"] = {"method": "qwen3_next_mtp", "num_speculative_tokens": 3}
 
 # (2) Compile cache: point vLLM at the cache_dir + download both caches from S3 before engine init.
@@ -189,12 +211,15 @@ deployment_config = dict(
 if ENABLE_PREFIX_ROUTING:
     # Tune these thresholds on real traffic. Too much affinity can overload the one replica with the closest
     # prefix cache, even when another replica has spare capacity.
-    # Direct streaming is always on here, and the stock PrefixCacheAffinityRouter HANGS under it (it can't
-    # read the raw body the direct-streaming ingress forwards). So use the DirectStreamingPrefixCacheRouter
-    # subclass in direct_streaming_prefix_router.py, which parses that body. Upstream fix:
-    # https://github.com/ray-project/ray/pull/64328 (lands in Ray Serve LLM 2.57) — once you're on
-    # ray-llm >= 2.57 you can drop the subclass and use the stock PrefixCacheAffinityRouter directly.
-    from direct_streaming_prefix_router import DirectStreamingPrefixCacheRouter as _PrefixRouter
+    # Direct streaming is always on here. On ray-llm 2.56 the stock PrefixCacheAffinityRouter hung under it
+    # (it couldn't read the raw body the direct-streaming ingress forwards) and this repo shipped a
+    # DirectStreamingPrefixCacheRouter subclass to work around it. ray#64328 fixed the ingress in 2.57, so
+    # the stock router is used directly and the subclass is gone. On ray-llm < 2.57, restore that adapter.
+    # Note: this router has no public export, so the import path is a Ray internal and may move between
+    # releases. Verified present in ray-llm 2.57.0.
+    from ray.llm._internal.serve.routing_policies.prefix_aware.prefix_aware_router import (
+        PrefixCacheAffinityRouter as _PrefixRouter,
+    )
     deployment_config["request_router_config"] = dict(
         request_router_class=_PrefixRouter,
         request_router_kwargs=dict(imbalanced_threshold=5, match_rate_threshold=0.15),

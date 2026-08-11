@@ -45,9 +45,12 @@ With direct streaming enabled, the deployment exposes each agent's expected API 
 
 - An Anyscale account and the Anyscale CLI (`pip install anyscale`, then `anyscale login`).
 - Claude Code, Codex, and/or Cursor.
-- The prebuilt **public** image `us-docker.pkg.dev/anyscale-workspace-templates/workspace-templates/llm-serving-for-coding-agents:2.56.0`
-  (ray-llm 2.56.0 + **vLLM 0.23.0**), pullable with no creds — Part 1 uses it so Claude Code's `/v1/messages`
-  works (stock `ray-llm:2.56.0` ships vLLM 0.22.0, which rejects a `system` role inside `messages[]`).
+- The stock **public** image `anyscale/ray-llm:2.57.0-py312-cu130` (ray-llm 2.57.0 + **vLLM 0.25.1**),
+  pullable from Docker Hub with no creds — Part 1 uses it as-is, since 0.25.1 accepts Claude Code's
+  `/v1/messages` schema natively. Part 3 builds on the same base to add the RunAI Streamer.
+  > ⚠ **Ray 2.57.0 is pre-GA** as of 2026-08-10 — the image is published, but no PyPI wheel or GitHub
+  > release exists yet, so `pip install "ray[serve,llm]==2.57.0"` fails and the tag can still be re-pushed.
+  > Pin the image by digest for anything long-lived; see [Part 3's Containerfile](./part3-optimize/Containerfile).
 
 ## Quick Start
 
@@ -83,8 +86,8 @@ anyscale service deploy -f service-always-on.yaml --working-dir .
 Measured performance gains and options include:
 
 - **MTP speculative decoding** — default for coding-agent traffic; improves decode **1.89×**, from 45.6 tok/s to 86.4 tok/s.
-- **RunAI Streamer** — optional cold-start path; reduces cold weight-load time **3.4×**, from ~85 s to ~25 s, but cannot be combined with MTP on vLLM 0.22.0.
-- **Torch.compile cache** — reduces compile startup time **8.5×**, from 74.5 s to 8.8 s.
+- **RunAI Streamer** — optional cold-start path; reduces cold weight-load time **3.4×**, from ~85 s to ~25 s, but cannot be combined with MTP ([vllm#42060](https://github.com/vllm-project/vllm/issues/42060), still open).
+- **Torch.compile cache** — reduces compile startup time **8.5×**, from 74.5 s to 8.8 s, on the no-MTP path only. Off by default until the cache is rebuilt for vLLM 0.25.1.
 - **FP8 KV cache** — doubles 256K-context KV concurrency, from ~3.27× to 6.53×.
 - **CUDA graphs** — improves decode throughput **2.87×**, from 15.9 tok/s to 45.6 tok/s.
 - **Autoscale** — grows serving capacity from 1 to 4 replicas with round-robin routing.
