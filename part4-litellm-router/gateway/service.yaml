@@ -21,6 +21,12 @@ name: litellm-router-gateway
 # CPU Ray image; LiteLLM is installed from requirements.txt. For production,
 # prefer baking deps into a custom image via the provided Containerfile (see
 # README) to avoid the several-minute pip install on every deploy.
+#
+# This Ray version is deliberately independent of the ray-llm 2.57.0 that Parts 1/3
+# run, and does NOT need to track it. The gateway is its own Anyscale Service on its
+# own cluster and reaches the model over plain HTTPS — no shared nodes, no Ray RPC,
+# no object store between them, so there is no version coupling to maintain. Bump it
+# on its own schedule; stay on py311, which requirements.txt is resolved against.
 image_uri: anyscale/ray:2.55.1-py311
 requirements: requirements.txt
 

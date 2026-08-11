@@ -5,6 +5,9 @@
 # iterate on the app without rebuilding the image. Build & use with:
 #   anyscale service deploy -f service.yaml --containerfile ./Containerfile
 # (and remove `image_uri` + `requirements` from service.yaml when doing so).
+# CPU-only Ray image, intentionally not tracking the ray-llm 2.57.0 of the Part 1/3 LLM service:
+# the gateway is a separate Anyscale Service that talks to the model over HTTPS, so the two Ray
+# versions never meet. Stay on py311 — the requirements.txt pins are resolved against it.
 FROM anyscale/ray:2.55.1-py311
 
 # Install the LiteLLM proxy + Anthropic SDK + prisma (dependencies only).
