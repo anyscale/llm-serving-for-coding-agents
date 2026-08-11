@@ -4,14 +4,19 @@ Read this before changing toggles in
 [`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py).
 
 These findings were measured or root-caused on `qwen3.6-27b`, 1× RTX PRO 6000 96 GB
-(`g7e.4xlarge`), `ray-llm:2.56.0-py312-cu130`, and vLLM 0.22.0–0.23.0. The current weight default is
+(`g7e.4xlarge`), `ray-llm:2.56.0-py312-cu130`, and vLLM 0.22.0–0.23.0. The service now runs
+`ray-llm:2.57.0-py312-cu130` / vLLM 0.25.1; apart from the compile cache (rebuilt and re-measured there),
+the conflicts below have not been re-reproduced on it, and the items the upgrade resolves outright are
+called out inline. The current weight default is
 `nvidia/Qwen3.6-27B-NVFP4`; FP8 remains the KV-cache dtype. Full numbers are in
 [`BENCHMARKS.md`](BENCHMARKS.md).
 
 ## Claude Code Compatibility
 
-The Ray LLM 2.56.0 base image's vLLM 0.22.0 rejects Claude Code's current Messages payload. Keep the
-Part 3 `Containerfile` override at vLLM 0.23.0 or newer; vLLM 0.23.0 was validated with Claude Code 2.1.201.
+**Resolved on ray-llm 2.57.0.** Its vLLM 0.25.1 accepts Claude Code's Messages payload — including a
+`system` role inside `messages[]` — so the `Containerfile` needs no vLLM override at all. For the record:
+the 2.56.0 base shipped vLLM 0.22.0, which rejected that payload, and this tutorial pinned vLLM 0.23.0
+(validated with Claude Code 2.1.201) to work around it. Anything below vLLM 0.23 still fails.
 
 ## Hard Incompatibilities
 
@@ -44,20 +49,28 @@ The prebuilt NVFP4 cache is keyed to the no-MTP text graph. MTP and image-heavy 
 compile graphs, so they cannot reuse that cache. The control panel automatically disables
 `ENABLE_COMPILE_CACHE` when MTP is enabled.
 
-### 3. Direct Streaming and Built-In Prefix Routing
+A torch.compile cache is also keyed to the exact vLLM version, and to the `cache_dir` it was compiled
+under — the AOT artifact stores absolute paths into the inductor cache dir. The cache shipped here was
+rebuilt on vLLM 0.25.1 under `COMPILE_CACHE_DIR`, which the serve file pins across the whole no-MTP path
+for that reason. A mismatch on either axis is fatal, not a graceful miss: the engine raises
+`FileNotFoundError` on `artifact_compile_range_*` and the service goes UNHEALTHY. Rebuild recipe is in
+[`serve_qwen3_6_27b_optimized.py`](../serve_qwen3_6_27b_optimized.py).
 
-Direct streaming plus Ray's built-in `PrefixCacheAffinityRouter` hangs on ray-llm 2.56. The direct-streaming
-ingress puts the raw body in `pending_request.kwargs["request_body"]`, but that router only checks
-`args`, so prefix routing never sees the request body correctly.
+### 3. Direct Streaming and Built-In Prefix Routing — resolved on ray-llm 2.57.0
 
-Options:
+On ray-llm 2.56, direct streaming plus Ray's built-in `PrefixCacheAffinityRouter` hung: the direct-streaming
+ingress put the raw body in `pending_request.kwargs["request_body"]`, but that router only checked `args`, so
+prefix routing never saw the request body. This repo shipped a `DirectStreamingPrefixCacheRouter` subclass to
+parse that body.
 
-- Use the default `RoundRobinRouter` for the single-user replay data in this tutorial.
-- If you opt into prefix routing, use `DirectStreamingPrefixCacheRouter`.
-- On Ray Serve LLM 2.57 or newer, use Ray's built-in router after
-  [ray#64328](https://github.com/ray-project/ray/pull/64328) lands.
+[ray#64328](https://github.com/ray-project/ray/pull/64328) made the ingress parse the payload for body-aware
+routers and is in the 2.57.0 release branch, so `serve_qwen3_6_27b_optimized.py` now wires up the stock
+`PrefixCacheAffinityRouter` and the subclass has been deleted. On ray-llm 2.56.x, recover that adapter from
+this repo's history.
 
-In this tutorial, direct streaming is always on. That is why prefix routing, when enabled, uses the subclass.
+Direct streaming is always on in this tutorial, so prefix routing has no other router option — but it stays
+off by default (the single-user replay data does not need replica affinity), and the 2.57.0 path has not been
+exercised end to end here.
 
 ## What Composes
 

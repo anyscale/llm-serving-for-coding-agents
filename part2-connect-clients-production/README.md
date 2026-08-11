@@ -43,7 +43,8 @@ export BRAVE_API_KEY=…        # web search via the local Brave MCP
 
 Both scripts take `ANYSCALE_BASE_URL` / `ANYSCALE_API_KEY` from your environment, prompting for either
 one that isn't set, and pin the model to `qwen3.6-27b`. Claude Code's `/v1/messages` needs the service
-on **vLLM ≥ 0.23** (0.22 rejects a `system` role inside `messages[]`).
+on **vLLM ≥ 0.23** (0.22 rejects a `system` role inside `messages[]`) — satisfied by the ray-llm 2.57.0
+image Parts 1 and 3 use, which ships vLLM 0.25.1.
 
 ## Cursor (GUI)
 
@@ -66,7 +67,7 @@ Chat/Ask work well; Tab and parts of Agent/Composer are tuned for Cursor's own m
 | First request times out | Service/model cold-starting; warm it with one small request (a single request past 300s hits the ALB `504`). |
 | Cursor: "Access to private networks is forbidden" | Expected for `localhost` — use the public service URL. |
 | Cursor / model not found | The custom-model name must equal the `LLMConfig` `model_id` (`qwen3.6-27b`) exactly. |
-| Claude Code: 400 on `/v1/messages` | The service needs **vLLM ≥ 0.23**; 0.22 rejects a `system` role inside `messages[]`. |
+| Claude Code: 400 on `/v1/messages` | The service needs **vLLM ≥ 0.23**; 0.22 rejects a `system` role inside `messages[]`. ray-llm 2.57.0 (vLLM 0.25.1) is fine; check you aren't on an older image. |
 | Codex: tool call returns "unsupported call" | Update Codex — dispatching MCP tools over a custom (non-OpenAI) provider needs a recent build. |
 
 Back: [Part 1](../part1-deploy-naive/README.md) · Optimized service: [Part 3](../part3-optimize/README.md)

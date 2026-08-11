@@ -7,7 +7,10 @@
 # requires HAProxy".) Validated 2026-06-30: all three native endpoints return HTTP 200.
 # Deploy only to compare against the optimized version; not for production.
 name: qwen3-6-27b-fp8-naive
-image_uri: us-docker.pkg.dev/anyscale-workspace-templates/workspace-templates/llm-serving-for-coding-agents:2.56.0   # prebuilt public image: ray-llm 2.56.0 + vLLM 0.23.0 (Claude Code /v1/messages support), pullable with no creds
+# Stock Anyscale base image, public on Docker Hub (pullable with no creds): ray-llm 2.57.0 + vLLM 0.25.1,
+# which accepts Claude Code's /v1/messages schema natively — no custom image needed for the baseline.
+# If your Anyscale cloud can't pull from Docker Hub, `anyscale image build` it once and use that image_uri.
+image_uri: anyscale/ray-llm:2.57.0-py312-cu130
 env_vars:
   RAY_SERVE_ENABLE_HA_PROXY: "1"               # cluster-level → reaches the Serve controller (enables HAProxy)
   RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING: "1"   # exposes vLLM's native /v1/messages + /v1/responses

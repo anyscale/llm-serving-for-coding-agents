@@ -3,14 +3,13 @@
 # The torch.compile cache (#2) needs no extra package — CloudDownloader ships with ray-llm,
 # and the shared-VLLM_CACHE_ROOT pattern needs nothing at all.
 #
-# PIN the base for production: the torch.compile cache is keyed to the exact vLLM
-# version/GPU/flags, so a drifting base silently invalidates it. For a fully immutable
-# build, replace the tag below with its digest:
-#   FROM anyscale/ray-llm@sha256:<digest>
-FROM anyscale/ray-llm:2.56.0-py312-cu130
+# ray-llm 2.57.0 ships vLLM 0.25.1, which accepts Claude Code's current /v1/messages schema natively,
+# so the `pip install "vllm==0.23.0"` override that the 2.56.0 base needed is gone.
+#
+# PIN the base for production: the torch.compile cache is keyed to the exact vLLM version/GPU/flags, so a
+# drifting base silently invalidates it. For a fully immutable build, use the digest instead of the tag:
+#   FROM anyscale/ray-llm@sha256:250e890f34a681c4e35ca2c26ea6cea660bce778bac48aef0ddb42492bb07a33
+FROM anyscale/ray-llm:2.57.0-py312-cu130
 
-# vLLM 0.23.0 supports Claude Code's current /v1/messages schema; the base image ships 0.22.0.
-RUN pip install --no-cache-dir "vllm==0.23.0" "scipy>=1.13"
-
-# [#1] Optional RunAI Model Streamer for S3 -> GPU weight streaming (validated 23.9s @ 1.2 GiB/s).
+# [#1] Optional RunAI Model Streamer for S3 -> GPU weight streaming (validated 23.9s @ 1.2 GiB/s on vLLM 0.23.0).
 RUN pip install --no-cache-dir runai-model-streamer runai-model-streamer-s3

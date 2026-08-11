@@ -84,11 +84,12 @@ also exists — handy for a service *without* direct streaming — but this repo
 
 ## Why this image / GPU
 
-- **Image `us-docker.pkg.dev/anyscale-workspace-templates/workspace-templates/llm-serving-for-coding-agents:2.56.0`**
-  — a prebuilt public image (pullable with no creds) built on `anyscale/ray-llm:2.56.0-py312-cu130`, which
-  upgrades the base's vLLM 0.22.0 to **0.23.0** so the native `/v1/messages` endpoint accepts Claude Code's
-  request schema. Stock `ray-llm:2.56.0` (vLLM 0.22.0) works for Codex and Cursor, but 0.22.0 rejects Claude
-  Code's `system` role; the older GA `ray-llm:2.55.x` ships vLLM 0.18 (too old) and fails to load Qwen3.6.
+- **Image `anyscale/ray-llm:2.57.0-py312-cu130`** — the stock Anyscale base image (public on Docker Hub,
+  pullable with no creds), shipping **vLLM 0.25.1**, which accepts Claude Code's `/v1/messages` request
+  schema natively. No custom image is needed here. Earlier releases don't work out of the box:
+  `ray-llm:2.56.0` ships vLLM 0.22.0, which serves Codex and Cursor but rejects Claude Code's `system` role
+  (this tutorial used to carry a prebuilt image that force-upgraded it to 0.23.0), and `ray-llm:2.55.x`
+  ships vLLM 0.18, too old to load Qwen3.6.
 - **4× L4 / TP=4** (`g6.12xlarge`) — a common, widely-available GPU shape, used here as the baseline. It's
   not optimal: L4 has the lowest memory bandwidth of the serving GPUs (~300 GB/s) and the 4 cards talk over
   PCIe with no NVLink, so tensor-parallel comms cost you. The FP8 weights fit on a single bigger GPU, so
@@ -99,7 +100,8 @@ also exists — handy for a service *without* direct streaming — but this repo
 
 `serve_qwen3_6_27b_naive.py` leaves `kv_cache_dtype` at the vLLM default (bf16).
 
-**Validated capacity** (vLLM 0.22.0, TP=4, `gpu_memory_utilization=0.85`, `max_model_len=131072`):
+**Validated capacity** (vLLM 0.22.0, TP=4, `gpu_memory_utilization=0.85`, `max_model_len=131072`) — measured
+on the older 2.56.0 image and **not re-measured on vLLM 0.25.1**:
 
 | Metric | Value |
 |---|---|
