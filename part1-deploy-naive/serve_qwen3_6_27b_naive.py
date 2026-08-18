@@ -48,7 +48,7 @@ llm_config = LLMConfig(
         model_id="qwen3.6-27b",
         model_source="s3://llm-guide/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/",
     ),
-    accelerator_type="L4",
+    # accelerator_type="L4",
     deployment_config=dict(
         # Single replica: no autoscaling, no routing.
         autoscaling_config=dict(min_replicas=1, max_replicas=1),
