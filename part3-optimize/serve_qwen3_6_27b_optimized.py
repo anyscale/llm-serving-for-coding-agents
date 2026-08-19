@@ -106,7 +106,7 @@ if ENABLE_NVFP4_WEIGHTS:
 else:
     # FP8 baseline and older FP8-capable GPU path. Ampere GPUs do not have native FP8 support.
     HF_SOURCE = "Qwen/Qwen3.6-27B-FP8"
-    S3_WEIGHTS = "s3://llm-guide/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/"
+    S3_WEIGHTS = "s3://llm-guide-use2/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/"
     WEIGHT_QUANTIZATION = None  # let vLLM infer the checkpoint's FP8 quantization metadata
 
 # NVFP4 compile cache (rebuilt + uploaded 2026-08-10; keyed to vLLM 0.25.1 / RTX PRO 6000 (SM120) / NVFP4
