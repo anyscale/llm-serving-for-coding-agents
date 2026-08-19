@@ -1,1 +1,1 @@
-/anyscale-workload-llm-serving Deploy qwen3.6-27b with 4x L4 GPUs (AWS g6.12xlarge, TP=4), weights located at s3://llm-guide/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/. No optimization needed. Deploy as an Anyscale service.
+/anyscale-workload-llm-serving Deploy qwen3.6-27b with 4x L4 GPUs (AWS g6.12xlarge, TP=4), weights located at s3://llm-guide-use2/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/. No optimization needed. Do not set accelerator_type — the workspace already provides the GPUs and has only one type. Deploy as an Anyscale service.

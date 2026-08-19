@@ -46,9 +46,10 @@ from ray.serve.llm import LLMConfig, build_openai_app
 llm_config = LLMConfig(
     model_loading_config=dict(
         model_id="qwen3.6-27b",
-        model_source="s3://llm-guide/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/",
+        model_source="s3://llm-guide-use2/data/ray-serve-llm/hf_repo/Qwen3.6-27B-FP8/",
     ),
-    # accelerator_type="L4",
+    # accelerator_type intentionally omitted — the compute config already pins the GPU shape
+    # (g6.12xlarge = 4x L4), so Ray schedules on it without a second, redundant constraint.
     deployment_config=dict(
         # Single replica: no autoscaling, no routing.
         autoscaling_config=dict(min_replicas=1, max_replicas=1),
